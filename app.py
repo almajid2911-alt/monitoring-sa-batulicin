@@ -1354,6 +1354,39 @@ def send_telegram_message(chat_id, text):
     except Exception as e:
         print(f"Failed to send Telegram message: {e}")
 
+def call_gemini_rest(prompt):
+    models_to_try = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-pro",
+        "gemini-pro"
+    ]
+    
+    last_error_msg = ""
+    for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }]
+        }
+        try:
+            res = requests.post(url, json=payload, timeout=20)
+            data = res.json()
+            if res.status_code == 200 and "candidates" in data and len(data["candidates"]) > 0:
+                parts = data["candidates"][0].get("content", {}).get("parts", [])
+                if parts and "text" in parts[0]:
+                    return parts[0]["text"]
+            else:
+                last_error_msg = data.get("error", {}).get("message", res.text)
+        except Exception as e:
+            last_error_msg = str(e)
+            
+    raise Exception(f"API Gemini Error: {last_error_msg}")
+
+
 @app.route("/api/telegram/webhook", methods=["POST"])
 def telegram_webhook():
     if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
@@ -1413,24 +1446,7 @@ Keterangan:
 Pertanyaan pengguna ({user_name}):
 "{user_text}"
 """
-            candidate_models = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-pro']
-            ai_reply = None
-            last_err = None
-            
-            for m in candidate_models:
-                try:
-                    model = genai.GenerativeModel(m)
-                    response = model.generate_content(prompt)
-                    if response and response.text:
-                        ai_reply = response.text
-                        break
-                except Exception as ex:
-                    last_err = ex
-                    continue
-
-            if not ai_reply:
-                raise last_err or Exception("Gagal menghubungi model AI")
-            
+            ai_reply = call_gemini_rest(prompt)
             send_telegram_message(chat_id, ai_reply)
 
         except Exception as e:
