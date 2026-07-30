@@ -1840,8 +1840,11 @@ def api_debug_env():
         "telegram_len": len(os.getenv("TELEGRAM_BOT_TOKEN", "")),
         "gemini_len": len(os.getenv("GEMINI_API_KEY", "")),
         "global_telegram_len": len(TELEGRAM_BOT_TOKEN),
-        "global_gemini_len": len(GEMINI_API_KEY)
+        "global_gemini_len": len(GEMINI_API_KEY),
+        "port": os.getenv("PORT", "not-set"),
+        "railway_env": os.getenv("RAILWAY_ENVIRONMENT", "not-set")
     })
+
 
 
 
