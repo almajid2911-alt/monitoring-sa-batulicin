@@ -1834,6 +1834,16 @@ def api_status():
     global last_sync_time
     return jsonify({"last_sync_time": last_sync_time.timestamp()})
 
+@app.route("/api/debug/env")
+def api_debug_env():
+    return jsonify({
+        "telegram_len": len(os.getenv("TELEGRAM_BOT_TOKEN", "")),
+        "gemini_len": len(os.getenv("GEMINI_API_KEY", "")),
+        "global_telegram_len": len(TELEGRAM_BOT_TOKEN),
+        "global_gemini_len": len(GEMINI_API_KEY)
+    })
+
+
 
 
 def init_db_migration():
