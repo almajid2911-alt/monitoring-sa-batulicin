@@ -1,0 +1,1526 @@
+{% extends "base.html" %}
+
+{% block title %}Monitoring SA Batulicin{% endblock %}
+
+{% macro badge_class(value, kind='status') -%}
+  {%- set normalized = (value or '')|lower|replace(' ', '-')|replace('(', '')|replace(')', '')|replace('/', '') -%}
+  {%- if not normalized -%}
+    badge-soft badge-status-empty
+  {%- else -%}
+    badge-soft badge-{{ kind }}-{{ normalized }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<div class="layout-shell">
+  <!-- ================= LEFT SIDEBAR NAVIGATION ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">M</div>
+      <div>
+        <div class="brand-title">Monitoring SA Batulicin</div>
+        <div class="brand-subtitle">Operational Dashboard</div>
+      </div>
+    </div>
+
+
+    <!-- PROVISIONING MODULE -->
+    <div class="menu-section mt-1 mb-2 d-flex align-items-center justify-content-between text-white-50">
+      <span><i class="bi bi-box-seam me-2 text-primary"></i> PROVISIONING</span>
+      <span class="badge bg-primary bg-opacity-20 text-primary" style="font-size: 0.6rem;">ACTIVE</span>
+    </div>
+    
+    <div class="menu-group-children">
+      <!-- 1. SUMMARY -->
+      <a class="menu-link active sidebar-nav-item" href="javascript:void(0)" id="side-nav-summary" style="padding: 0.6rem 0.8rem; margin-bottom: 0.4rem;">
+        <i class="bi bi-grid-1x2-fill"></i><span>SUMMARY</span>
+      </a>
+
+      <!-- 2. NEED FOLLOW UP SECTION -->
+      <div class="menu-sub-header text-warning mt-3 mb-2 px-2 fw-bold" style="font-size: 0.72rem; letter-spacing: 0.08em;">NEED FOLLOW UP</div>
+      
+      <a class="menu-link sidebar-sub-item" href="javascript:void(0)" id="side-nav-validasi" style="padding: 0.5rem 0.8rem; font-size: 0.82rem; margin-bottom: 0.2rem;">
+        <i class="bi bi-shield-check text-info"></i><span>1. Validasi kendala</span>
+      </a>
+      <a class="menu-link sidebar-sub-item" href="javascript:void(0)" id="side-nav-fu-pending" style="padding: 0.5rem 0.8rem; font-size: 0.82rem; margin-bottom: 0.2rem;">
+        <i class="bi bi-clock-history text-primary"></i><span>2. Need FU &amp; Cek Pending</span>
+      </a>
+      <a class="menu-link sidebar-sub-item" href="javascript:void(0)" id="side-nav-potensi" style="padding: 0.5rem 0.8rem; font-size: 0.82rem; margin-bottom: 0.2rem;">
+        <i class="bi bi-star-fill text-warning"></i><span>3. Detail Potensi</span>
+      </a>
+
+      <!-- 3. MATRIKS ORDER -->
+      <div class="menu-sub-header text-muted mt-3 mb-2 px-2 fw-bold" style="font-size: 0.72rem; letter-spacing: 0.08em;">MONITORING</div>
+      <a class="menu-link sidebar-nav-item" href="javascript:void(0)" id="side-nav-matriks" style="padding: 0.6rem 0.8rem;">
+        <i class="bi bi-table"></i><span>MATRIKS ORDER</span>
+      </a>
+    </div>
+
+    <!-- ASSURANCE MODULE -->
+    <div class="menu-section mt-4 mb-2 d-flex align-items-center justify-content-between text-white-50">
+      <span><i class="bi bi-tools me-2 text-danger"></i> ASSURANCE</span>
+      <span class="badge bg-danger bg-opacity-20 text-danger" style="font-size: 0.6rem;">ACTIVE</span>
+    </div>
+    
+    <div class="menu-group-children">
+      <a class="menu-link sidebar-nav-item" href="javascript:void(0)" id="side-nav-assurance-summary" style="padding: 0.6rem 0.8rem; margin-bottom: 0.4rem;">
+        <i class="bi bi-ticket-detailed-fill text-danger"></i><span>SUMMARY SALDO TIKET</span>
+      </a>
+      <a class="menu-link sidebar-nav-item" href="javascript:void(0)" id="side-nav-assurance-matriks" style="padding: 0.6rem 0.8rem; margin-bottom: 0.4rem;">
+        <i class="bi bi-grid-3x3-gap-fill text-warning"></i><span>MATRIKS TIKET GANGGUAN</span>
+      </a>
+      <a class="menu-link sidebar-nav-item" href="javascript:void(0)" id="side-nav-assurance-table" style="padding: 0.6rem 0.8rem; margin-bottom: 0.4rem;">
+        <i class="bi bi-list-check text-info"></i><span>DAFTAR TIKET GANGGUAN</span>
+      </a>
+    </div>
+
+  </aside>
+
+
+  <main class="main-content">
+    <div class="topbar">
+      <div class="hero-card">
+        <div class="hero-content">
+          <div>
+            <div class="hero-title">Dashboard Monitoring PS</div>
+            <div class="hero-subtitle">Monitoring operasional harian yang lebih clean, cepat dibaca, dan siap dipakai evaluasi.</div>
+            <div class="hero-meta">Source: {{ data_source }} · Total data tampil: {{ row_count }} · Total PS acuan hari ini: {{ today_date }}</div>
+          </div>
+          <div class="profile-box">
+            <div class="profile-name">AL MAJID</div>
+            <div class="profile-role">Head_of_Service_Area · Batulicin</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-wrap">
+      <!-- Filter Bar -->
+      <div class="glass-card filter-card mb-4">
+        <form class="row g-3 align-items-end" method="get">
+          <input type="hidden" name="active_tab" id="active_tab_input" value="{{ filters.active_tab|default('pane-summary', true) }}">
+
+          <div class="col-6 col-md-4 col-lg-2">
+            <label class="form-label">Sektor</label>
+            <select class="form-select" name="sektor">
+              <option value="" {% if filters.sektor == '' %}selected{% endif %}>Semua Sektor</option>
+              <option value="batulicin" {% if filters.sektor == 'batulicin' %}selected{% endif %}>BATULICIN</option>
+              <option value="satui" {% if filters.sektor == 'satui' %}selected{% endif %}>SATUI</option>
+              <option value="kotabaru" {% if filters.sektor == 'kotabaru' %}selected{% endif %}>KOTABARU</option>
+            </select>
+          </div>
+
+          <!-- Jenis Order filter (Provisioning) -->
+          <div class="col-6 col-md-4 col-lg-2">
+            <label class="form-label">Jenis Order</label>
+            <select class="form-select" name="jenis_order">
+              <option value="" {% if not filters.jenis_order %}selected{% endif %}>Semua Jenis Order</option>
+              <option value="INDIHOME" {% if filters.jenis_order == 'INDIHOME' %}selected{% endif %}>INDIHOME</option>
+              <option value="INDIBIZ" {% if filters.jenis_order == 'INDIBIZ' %}selected{% endif %}>INDIBIZ</option>
+              <option value="PDA" {% if filters.jenis_order == 'PDA' %}selected{% endif %}>PDA</option>
+              <option value="TIF" {% if filters.jenis_order == 'TIF' %}selected{% endif %}>TIF</option>
+            </select>
+          </div>
+
+          <div class="col-6 col-md-4 col-lg-2">
+            <label class="form-label">Wilsus</label>
+            <select class="form-select" name="wilsus">
+              <option value="" {% if not filters.wilsus %}selected{% endif %}>Semua Wilsus</option>
+              {% for w in assurance.all_wilsus %}
+                <option value="{{ w }}" {% if filters.wilsus == w %}selected{% endif %}>{{ w }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-4 col-lg-2">
+            <label class="form-label">Jenis Tiket</label>
+            <select class="form-select" name="jenis_tiket">
+              <option value="" {% if not filters.jenis_tiket %}selected{% endif %}>Semua Jenis Tiket</option>
+              <option value="REGULER" {% if filters.jenis_tiket == 'REGULER' %}selected{% endif %}>REGULER (Excl SQM &amp; Unspec)</option>
+              <option value="SQM" {% if filters.jenis_tiket == 'SQM' %}selected{% endif %}>SQM</option>
+              <option value="UNSPEC" {% if filters.jenis_tiket == 'UNSPEC' %}selected{% endif %}>UNSPEC</option>
+              <option value="GAMAS" {% if filters.jenis_tiket == 'GAMAS' %}selected{% endif %}>GAMAS</option>
+              <option value="HVC Gold" {% if filters.jenis_tiket == 'HVC Gold' %}selected{% endif %}>HVC Gold</option>
+              <option value="HVC Diamond" {% if filters.jenis_tiket == 'HVC Diamond' %}selected{% endif %}>HVC Diamond</option>
+              <option value="HVC Platinum" {% if filters.jenis_tiket == 'HVC Platinum' %}selected{% endif %}>HVC Platinum</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-4 col-lg-2">
+            <label class="form-label">Start Date</label>
+            <input class="form-control" name="start_date" type="date" value="{{ filters.start_date }}">
+          </div>
+          <div class="col-6 col-md-4 col-lg-2">
+            <label class="form-label">End Date</label>
+            <input class="form-control" name="end_date" type="date" value="{{ filters.end_date }}">
+          </div>
+          <div class="col-6 col-md-4 col-lg-1">
+            <button class="btn btn-primary w-100" type="submit">
+              <i class="bi bi-funnel-fill me-1"></i>Filter
+            </button>
+          </div>
+          <div class="col-12 col-md-4 col-lg-1">
+            <button class="btn btn-outline-primary w-100" type="button" id="btnSync">
+              <i class="bi bi-arrow-repeat me-1"></i><span id="syncText">Sync</span>
+            </button>
+          </div>
+
+
+        </form>
+      </div>
+
+      <!-- ================= TAB PANES ================= -->
+      <div class="tab-content" id="mainDashboardTabContent">
+        
+        <!-- ================= PANE 1: SUMMARY ================= -->
+        <div class="tab-pane fade show active" id="pane-summary" role="tabpanel">
+          
+          <!-- Metric Cards Grid (7 Columns) -->
+          <div class="row g-3 mb-4 metric-grid-7">
+            <div class="col-xl col-md-4 col-6">
+              <div class="card metric-card metric-ps h-100" data-drilldown-type="total_ps" style="cursor: pointer;">
+                <div class="card-body px-3">
+                  <div class="metric-label text-truncate w-100">Total PS</div>
+                  <div class="metric-value" id="metric-total-ps">{{ summary.total_ps }}</div>
+                  <div id="ps-breakdown-container" class="ps-badge-container">
+                    {% if summary.ps_breakdown %}
+                      {% for b in summary.ps_breakdown %}
+                        <span class="badge-soft-summary">*{{ b.product }} : {{ b.count }}</span>
+                      {% endfor %}
+                    {% endif %}
+                  </div>
+                  <div class="metric-footnote mt-2">Acuan hari ini</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-xl col-md-4 col-6">
+              <div class="card metric-card metric-potensi h-100" data-drilldown-type="total_potensi" style="cursor: pointer;">
+                <div class="card-body px-3">
+                  <div class="metric-label text-truncate w-100">Total Potensi</div>
+                  <div class="metric-value" id="metric-total-potensi">{{ summary.total_potensi }}</div>
+                  <div id="potensi-breakdown-container" class="ps-badge-container">
+                    {% if summary.potensi_breakdown %}
+                      {% for b in summary.potensi_breakdown %}
+                        <span class="badge-soft-summary">*{{ b.product }} : {{ b.count }}</span>
+                      {% endfor %}
+                    {% endif %}
+                  </div>
+                  <div class="metric-footnote mt-1">VALSTART/ACTCOMP/VALCOMP/SETTING</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-xl col-md-4 col-6">
+              <div class="card metric-card metric-ogp h-100" data-drilldown-type="sedang_ogp" style="cursor: pointer;">
+                <div class="card-body px-3">
+                  <div class="metric-label text-truncate w-100">Sedang OGP</div>
+                  <div class="metric-value" id="metric-sedang-ogp">{{ summary.sedang_ogp }}</div>
+                  <div id="ogp-breakdown-container" class="ps-badge-container">
+                    {% if summary.ogp_breakdown %}
+                      {% for b in summary.ogp_breakdown %}
+                        <span class="badge-soft-summary">*{{ b.product }} : {{ b.count }}</span>
+                      {% endfor %}
+                    {% endif %}
+                  </div>
+                  <div class="metric-footnote mt-1">Status Sedang Dikerjakan</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-xl col-md-4 col-6">
+              <div class="card metric-card metric-oke h-100" data-drilldown-type="oke_tarik" style="cursor: pointer;">
+                <div class="card-body px-3">
+                  <div class="metric-label text-truncate w-100">Oke Tarik</div>
+                  <div class="metric-value" id="metric-oke-tarik">{{ summary.oke_tarik }}</div>
+                  <div id="oke-breakdown-container" class="ps-badge-container">
+                    {% if summary.oke_breakdown %}
+                      {% for b in summary.oke_breakdown %}
+                        <span class="badge-soft-summary">*{{ b.product }} : {{ b.count }}</span>
+                      {% endfor %}
+                    {% endif %}
+                  </div>
+                  <div class="metric-footnote mt-1">WF/SW + OKE TARIK</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-xl col-md-4 col-6">
+              <div class="card metric-card metric-belum h-100" data-drilldown-type="belum_dikerjakan" style="cursor: pointer;">
+                <div class="card-body px-3">
+                  <div class="metric-label text-truncate w-100">Belum Dikerjakan</div>
+                  <div class="metric-value" id="metric-belum-dikerjakan">{{ summary.belum_dikerjakan }}</div>
+                  <div id="belum-breakdown-container" class="ps-badge-container">
+                    {% if summary.belum_breakdown %}
+                      {% for b in summary.belum_breakdown %}
+                        <span class="badge-soft-summary">*{{ b.product }} : {{ b.count }}</span>
+                      {% endfor %}
+                    {% endif %}
+                  </div>
+                  <div class="metric-footnote mt-1">WF/SW + BLC/kosong</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-xl col-md-4 col-6">
+              <div class="card metric-card metric-undispatch h-100" data-drilldown-type="undispatch" style="cursor: pointer;">
+                <div class="card-body px-3">
+                  <div class="metric-label text-truncate w-100">Undispatch</div>
+                  <div class="metric-value" id="metric-undispatch">{{ summary.undispatch }}</div>
+                  <div id="undispatch-breakdown-container" class="ps-badge-container"></div>
+                  <div class="metric-footnote mt-1">WF/SW + TIM kosong</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-xl col-md-4 col-6">
+              <div class="card metric-card metric-idle h-100" data-drilldown-type="idle_teams" style="cursor: pointer;">
+                <div class="card-body px-3">
+                  <div class="metric-label text-truncate w-100">Tim Active Idle</div>
+                  <div class="metric-value text-danger fw-bold" id="metric-idle-teams">{{ summary.idle_teams_count }}</div>
+                  <div class="metric-footnote mt-1">Tim Aktif Tanpa OGP Hari Ini</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Tim Panels -->
+          <div class="row g-4 mb-4">
+            <div class="col-lg-6">
+               <div class="glass-card h-100 p-3" style="display: flex; flex-direction: column;">
+                 <div class="section-title mb-3" style="font-size: 1.05rem;"><i class="bi bi-trophy text-warning me-2"></i>TIM COMPWORK HARI INI TERBANYAK</div>
+                 <div class="d-flex flex-column gap-2" id="top-tim-today">
+                    {% for item in top_tim_today %}
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2" style="background: rgba(0,0,0,0.04); border-radius: 8px;">
+                       <span class="fw-medium text-dark" style="font-size: 0.95rem;">{{ item.tim }}</span>
+                       <span class="badge bg-success rounded-pill px-3" style="font-size: 0.9rem;">{{ item.count }}</span>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted p-2">Belum ada PS Hari Ini</div>
+                    {% endfor %}
+                 </div>
+               </div>
+            </div>
+            <div class="col-lg-6">
+               <div class="glass-card h-100 p-3" style="display: flex; flex-direction: column;">
+                 <div class="section-title mb-3" style="font-size: 1.05rem;"><i class="bi bi-award text-info me-2"></i>TIM COMPWORK MTD TERBANYAK</div>
+                 <div class="d-flex flex-column gap-2" id="top-tim-mtd">
+                    {% for item in top_tim_mtd %}
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2" style="background: rgba(0,0,0,0.04); border-radius: 8px;">
+                       <span class="fw-medium text-dark" style="font-size: 0.95rem;">{{ item.tim }}</span>
+                       <span class="badge bg-primary rounded-pill px-3" style="font-size: 0.9rem;">{{ item.count }}</span>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted p-2">Belum ada PS Bulan Ini</div>
+                    {% endfor %}
+                 </div>
+               </div>
+            </div>
+          </div>
+
+          <!-- Distribusi Jam Charts -->
+          <div class="row g-4 mb-4">
+            <div class="col-lg-6">
+              <div class="glass-card section-card chart-card h-100">
+                <div class="section-header">
+                  <div>
+                    <div class="section-title">Distribusi Jam PS <span id="dist-ps-count">({{ jam_ps_chart.total|default('0') }})</span></div>
+                    <div class="section-subtitle">
+                      Melihat pola PS berdasarkan jam order selesai
+                      <div id="dist-ps-breakdown" class="mt-2" style="font-size: 0.8rem;">
+                        {% if jam_ps_chart.breakdown %}
+                          {% for b in jam_ps_chart.breakdown %}
+                            <span class="badge bg-light text-dark border me-1 fw-normal">*{{ b.product }} : {{ b.count }}</span>
+                          {% endfor %}
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="chart-icon"><i class="bi bi-graph-up-arrow"></i></div>
+                </div>
+                <div class="card-body" style="position: relative; height: 240px;">
+                  <canvas id="jamPsChart"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="glass-card section-card chart-card h-100">
+                <div class="section-header">
+                  <div>
+                    <div class="section-title">Distribusi Jam RE <span id="dist-re-count">({{ jam_re_chart.total|default('0') }})</span></div>
+                    <div class="section-subtitle">
+                      Melihat persebaran jam awal proses order
+                      <div id="dist-re-breakdown" class="mt-2" style="font-size: 0.8rem;">
+                        {% if jam_re_chart.breakdown %}
+                          {% for b in jam_re_chart.breakdown %}
+                            <span class="badge bg-light text-dark border me-1 fw-normal">*{{ b.product }} : {{ b.count }}</span>
+                          {% endfor %}
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="chart-icon"><i class="bi bi-bar-chart-steps"></i></div>
+                </div>
+                <div class="card-body" style="position: relative; height: 240px;">
+                  <canvas id="jamReChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Matriks Ringkasan Sisa Order (Pivot Table) -->
+          <div class="glass-card section-card mb-4">
+            <div class="section-header">
+              <div>
+                <div class="section-title">Matriks Ringkasan Sisa Order</div>
+                <div class="section-subtitle">Pivot Workzone & Wilsus x Jenis Order (Filter: Status = STARTWORK/WORKFAIL, Morning = Belum/Sedang Dikerjakan/Kosong)</div>
+              </div>
+              <div class="chart-icon"><i class="bi bi-grid-3x3-gap-fill"></i></div>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-bordered align-middle text-center sisa-pivot-table mb-0" id="table-sisa-pivot" style="font-size: 0.78rem;">
+                  <thead>
+                    <tr class="table-light text-uppercase small border-bottom">
+                      <th style="width: 15%; text-align: left;">Workzone</th>
+                      <th style="width: 20%; text-align: left;">Wilsus</th>
+                      {% for p in sisa_pivot.products %}
+                        <th>{{ p }}</th>
+                      {% endfor %}
+                      <th class="bg-light text-dark fw-bold">Grand Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sisa-pivot-tbody">
+                    {% for wz in sisa_pivot.workzones %}
+                      {% for wrow in wz.wilsus_rows %}
+                        <tr>
+                          {% if loop.first %}
+                            <td rowspan="{{ wz.wilsus_rows|length + 1 }}" class="fw-bold align-middle bg-light text-start text-dark" style="font-size: 0.85rem;">{{ wz.workzone }}</td>
+                          {% endif %}
+                          <td class="text-start text-secondary fw-semibold">{{ wrow.wilsus }}</td>
+                          {% for p in sisa_pivot.products %}
+                            {% set cnt = wrow.product_counts[p] %}
+                            <td class="fw-bold clickable-pivot-cell {% if cnt > 0 %}text-primary{% else %}text-muted opacity-50{% endif %}"
+                                data-module="provisioning" data-wz="{{ wz.workzone }}" data-wilsus="{{ wrow.wilsus }}" data-jenis="{{ p }}" data-cnt="{{ cnt }}">
+                              {% if cnt > 0 %}{{ cnt }}{% else %}-{% endif %}
+                            </td>
+                          {% endfor %}
+                          <td class="fw-bold text-dark bg-light clickable-pivot-cell"
+                              data-module="provisioning" data-wz="{{ wz.workzone }}" data-wilsus="{{ wrow.wilsus }}" data-jenis="TOTAL" data-cnt="{{ wrow.row_total }}">
+                            {{ wrow.row_total }}
+                          </td>
+                        </tr>
+                      {% endfor %}
+                      <!-- Subtotal Workzone -->
+                      <tr class="table-secondary fw-bold">
+                        <td class="text-start text-uppercase" style="font-size: 0.8rem;">{{ wz.workzone }} Total</td>
+                        {% for p in sisa_pivot.products %}
+                          {% set wz_cnt = wz.wz_totals[p] %}
+                          <td class="fw-bold clickable-pivot-cell {% if wz_cnt > 0 %}text-dark{% else %}text-muted opacity-50{% endif %}"
+                              data-module="provisioning" data-wz="{{ wz.workzone }}" data-wilsus="-" data-jenis="{{ p }}" data-cnt="{{ wz_cnt }}">
+                            {% if wz_cnt > 0 %}{{ wz_cnt }}{% else %}-{% endif %}
+                          </td>
+                        {% endfor %}
+                        <td class="fw-bold text-dark clickable-pivot-cell"
+                            data-module="provisioning" data-wz="{{ wz.workzone }}" data-wilsus="-" data-jenis="TOTAL" data-cnt="{{ wz.wz_grand_total }}">
+                          {{ wz.wz_grand_total }}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+
+                  <tfoot>
+                    <tr class="table-light fw-bold text-uppercase" style="border-top: 3px double #94a3b8;">
+                      <td colspan="2" class="text-start">Grand Total</td>
+                      {% for p in sisa_pivot.products %}
+                        {% set col_tot = sisa_pivot.col_totals[p] %}
+                        <td class="fw-bold text-dark fs-6 clickable-pivot-cell" id="sisa-grand-{{ p }}"
+                            data-module="provisioning" data-wz="GRAND TOTAL" data-wilsus="-" data-jenis="{{ p }}" data-cnt="{{ col_tot }}">
+                          {{ col_tot }}
+                        </td>
+                      {% endfor %}
+                      <td class="fw-bold text-dark fs-6 clickable-pivot-cell" id="sisa-grand-total"
+                          data-module="provisioning" data-wz="GRAND TOTAL" data-wilsus="-" data-jenis="TOTAL" data-cnt="{{ sisa_pivot.grand_total }}">
+                        {{ sisa_pivot.grand_total }}
+                      </td>
+                    </tr>
+                  </tfoot>
+
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </div> <!-- /#pane-summary -->
+
+        <!-- ================= PANE 2: NEED FOLLOW UP ================= -->
+        <div class="tab-pane fade" id="pane-followup" role="tabpanel">
+          
+          <!-- Sub Section 1: Validasi Kendala -->
+          <div class="sub-tab-content" id="sub-validasi">
+            <div class="glass-card section-card mb-4">
+              <div class="section-header">
+                <div>
+                  <div class="section-title">1. VALIDASI KENDALA</div>
+                  <div class="section-subtitle">Monitoring status validasi untuk Kendala Pelanggan & Kendala Teknik</div>
+                </div>
+                <div class="chart-icon"><i class="bi bi-shield-check"></i></div>
+              </div>
+              <div class="card-body">
+                <!-- Table 1: KENDALA PELANGGAN -->
+                <div class="mb-4">
+                  <h6 class="fw-bold text-uppercase mb-2 text-dark" style="font-size: 0.85rem; font-style: italic;">KENDALA PELANGGAN (<span id="count-kendala-pelanggan">{{ kendala_pelanggan|length }}</span>)</h6>
+                  <div class="table-responsive">
+                    <table class="table table-bordered align-middle text-start mb-0" id="table-kendala-pelanggan" style="font-size: 0.78rem;">
+                      <thead>
+                        <tr class="table-light text-uppercase small border-bottom">
+                          <th style="width: 15%;">Workorder</th>
+                          <th style="width: 25%;">track_order</th>
+                          <th style="width: 20%;">status morning</th>
+                          <th style="width: 25%;">Catatan</th>
+                          <th style="width: 15%;">VALIDASI</th>
+                          <th style="width: 10%;">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tbody-kendala-pelanggan">
+                        {% for row in kendala_pelanggan %}
+                          <tr class="bg-white">
+                            <td class="fw-bold text-dark">{{ row.workorder }}</td>
+                            <td><code class="fw-bold text-dark px-2 py-1 bg-light rounded border" style="font-size:0.72rem;">{{ row.track_order }}</code></td>
+                            <td><span class="badge-soft-status status-belum">{{ row.status_morning }}</span></td>
+                            <td class="catatan-cell" style="white-space: pre-wrap; word-break: break-word;">{{ row.catatan }}</td>
+                            <td><span class="fw-semibold text-secondary">{{ row.validasi }}</span></td>
+                            <td><span class="fw-bold text-uppercase" style="font-size:0.72rem;">{{ row.status }}</span></td>
+                          </tr>
+                        {% else %}
+                          <tr><td colspan="6" class="text-center text-muted py-3">Tidak ada data Kendala Pelanggan</td></tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Table 2: KENDALA TEKNIK -->
+                <div>
+                  <h6 class="fw-bold text-uppercase mb-2 text-dark" style="font-size: 0.85rem; font-style: italic;">KENDALA TEKNIK (<span id="count-kendala-teknik">{{ kendala_teknik|length }}</span>)</h6>
+                  <div class="table-responsive">
+                    <table class="table table-bordered align-middle text-start mb-0" id="table-kendala-teknik" style="font-size: 0.78rem;">
+                      <thead>
+                        <tr class="table-light text-uppercase small border-bottom">
+                          <th style="width: 15%;">Workorder</th>
+                          <th style="width: 25%;">track_order</th>
+                          <th style="width: 20%;">status morning</th>
+                          <th style="width: 25%;">Catatan</th>
+                          <th style="width: 15%;">VALIDASI</th>
+                          <th style="width: 10%;">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tbody-kendala-teknik">
+                        {% for row in kendala_teknik %}
+                          <tr class="bg-white">
+                            <td class="fw-bold text-dark">{{ row.workorder }}</td>
+                            <td><code class="fw-bold text-dark px-2 py-1 bg-light rounded border" style="font-size:0.72rem;">{{ row.track_order }}</code></td>
+                            <td><span class="badge-soft-status status-pending">{{ row.status_morning }}</span></td>
+                            <td class="catatan-cell" style="white-space: pre-wrap; word-break: break-word;">{{ row.catatan }}</td>
+                            <td><span class="fw-semibold text-secondary">{{ row.validasi }}</span></td>
+                            <td><span class="fw-bold text-uppercase" style="font-size:0.72rem;">{{ row.status }}</span></td>
+                          </tr>
+                        {% else %}
+                          <tr><td colspan="6" class="text-center text-muted py-3">Tidak ada data Kendala Teknik</td></tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          <!-- Sub Section 2: Kendala Teknik Need FU & Cek Pending -->
+          <div class="sub-tab-content d-none" id="sub-fu-pending">
+            <div class="glass-card section-card mb-4 p-3">
+              <div class="section-title mb-3" style="font-size: 1.05rem;">2. KENDALA TEKNIK NEED FU & CEK PENDING</div>
+              <div class="row g-4 align-items-stretch">
+                <div class="col-lg-5">
+                   <div class="glass-card h-100 p-3" style="display: flex; flex-direction: column;">
+                     <div class="section-title mb-2" id="title-kendala" style="font-size: 0.9rem; text-transform: uppercase;">KENDALA TEKNIK NEED FU ({{ kendala_fu|length }})</div>
+                     <div class="flex-grow-1" style="max-height: 350px; overflow-y: auto;">
+                        <div id="kendala-tbody" class="compact-list">
+                          {% for row in kendala_fu %}
+                          <div class="compact-item">
+                            <div class="compact-info-row">
+                              <div class="compact-tim-track">
+                                <span class="compact-tim">{{ row.tim }}</span>
+                                <span class="compact-track">{{ row.track_order }}</span>
+                              </div>
+                              <div class="compact-status">
+                                <span class="{{ badge_class(row.status_morning) }}">{{ row.status_morning }}</span>
+                              </div>
+                            </div>
+                            <div class="compact-catatan">{{ row.catatan }}</div>
+                          </div>
+                          {% else %}
+                          <div class="text-center text-muted p-4">Tidak ada data</div>
+                          {% endfor %}
+                        </div>
+                     </div>
+                   </div>
+                </div>
+                <div class="col-lg-5">
+                   <div class="glass-card h-100 p-3" style="display: flex; flex-direction: column;">
+                     <div class="section-title mb-2" id="title-pending" style="font-size: 0.9rem; text-transform: uppercase;">CEK PENDING ({{ cek_pending|length }})</div>
+                     <div class="flex-grow-1" style="max-height: 350px; overflow-y: auto;">
+                        <div id="cekpending-tbody" class="compact-list">
+                          {% for row in cek_pending %}
+                          <div class="compact-item">
+                            <div class="compact-info-row">
+                              <div class="compact-tim-track">
+                                <span class="compact-tim">{{ row.tim }}</span>
+                                <span class="compact-track">{{ row.track_order }}</span>
+                              </div>
+                              <div class="compact-status">
+                                <span class="{{ badge_class(row.status_morning) }}">{{ row.status_morning }}</span>
+                              </div>
+                            </div>
+                            <div class="compact-catatan">{{ row.catatan }}</div>
+                          </div>
+                          {% else %}
+                          <div class="text-center text-muted p-4">Tidak ada data</div>
+                          {% endfor %}
+                        </div>
+                     </div>
+                   </div>
+                </div>
+                <div class="col-lg-2">
+                   <div class="card metric-card failwa-card h-100 bg-secondary bg-opacity-75 text-white border-0" data-drilldown-type="perlu_failwa" style="cursor: pointer; position: relative; overflow: hidden;">
+                      <div class="card-body d-flex flex-column justify-content-center align-items-start w-100 z-1 position-relative">
+                         <div class="metric-label text-white fw-bold mb-1" style="font-size: 0.70rem; text-transform: uppercase;">Perlu di Failwa</div>
+                         <div class="metric-value text-white fw-bold lh-1 mb-1" style="font-size: 2rem;" id="metric-failwa">{{ failwa_count }}</div>
+                         <div class="metric-footnote mt-auto pt-1 text-white-50 w-100" style="font-size: 0.65rem; border-top: 1px solid rgba(255,255,255,0.1);">
+                            STARTWORK > Hari Ini
+                         </div>
+                      </div>
+                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sub Section 3: Detail Potensi -->
+          <div class="sub-tab-content d-none" id="sub-potensi">
+            <div class="glass-card section-card mb-4">
+              <div class="section-header">
+                <div>
+                  <div class="section-title">3. DETAIL POTENSI PS (<span id="count-detail-potensi">{{ detail_potensi|length }}</span>)</div>
+                  <div class="section-subtitle">Daftar order dengan Status ACTCOMP / VALSTART atau status morning PROSES SETTING</div>
+                </div>
+                <div class="chart-icon"><i class="bi bi-star-fill text-warning"></i></div>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-bordered align-middle text-start mb-0" id="table-detail-potensi-page" style="font-size: 0.78rem;">
+                    <thead>
+                      <tr class="table-light text-uppercase small border-bottom">
+                        <th style="width: 12%;">Workorder</th>
+                        <th style="width: 20%;">track_order</th>
+                        <th style="width: 10%;">Jenis Order</th>
+                        <th style="width: 10%;">ODC</th>
+                        <th style="width: 10%;">TIM</th>
+                        <th style="width: 13%;">STATUS MORNING</th>
+                        <th style="width: 13%;">Catatan</th>
+                        <th style="width: 10%;">ESKAL DAMAN</th>
+                        <th style="width: 7%;">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tbody-detail-potensi">
+                      {% for row in detail_potensi %}
+                        <tr class="bg-white">
+                          <td class="fw-bold text-dark">{{ row.workorder }}</td>
+                          <td><code class="fw-bold text-dark px-2 py-1 bg-light rounded border" style="font-size:0.72rem;">{{ row.track_order }}</code></td>
+                          <td class="fw-semibold text-secondary">{{ row.product_name }}</td>
+                          <td><span class="odc-badge">{{ row.odc }}</span></td>
+                          <td class="fw-bold text-dark">{{ row.tim }}</td>
+                          <td><span class="badge-soft-status status-ps">{{ row.status_morning }}</span></td>
+                          <td class="catatan-cell" style="white-space: pre-wrap; word-break: break-word;">{{ row.catatan }}</td>
+                          <td><span class="fw-semibold text-secondary" style="font-size:0.72rem;">{{ row.eskal_daman or '-' }}</span></td>
+                          <td><span class="fw-bold text-uppercase text-primary" style="font-size:0.72rem;">{{ row.status }}</span></td>
+                        </tr>
+                      {% else %}
+                        <tr><td colspan="9" class="text-center text-muted py-3">Tidak ada data Detail Potensi</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div> <!-- /#pane-followup -->
+
+        <!-- ================= PANE 3: MATRIKS ORDER ================= -->
+        <div class="tab-pane fade" id="pane-matriks" role="tabpanel">
+          <div class="glass-card section-card">
+            <div class="section-header">
+              <div>
+                <div class="section-title">Matriks Monitoring Order</div>
+                <div class="section-subtitle">Klik baris order untuk melihat detail. Gunakan search untuk cari cepat TIM / ODC / status.</div>
+              </div>
+              <div class="d-flex align-items-center gap-3">
+                <div class="chart-icon"><i class="bi bi-table"></i></div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table dashboard-table table-bordered matrix-compact-table" id="detailTable" style="font-size: 0.75rem; width: 100%;">
+                  <thead>
+                    <tr>
+                      <th style="display:none;">WORKZONE</th>
+                      <th style="width: 25%; white-space: nowrap;">TIM</th>
+                      <th style="width: 30%;">TRACK ORDER</th>
+                      <th style="width: 20%;">ODC</th>
+                      <th style="width: 25%;">STATUS MORNING</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in matrix_rows %}
+                      <tr class="matrix-compact-row bg-white">
+                        <td style="display:none;">{{ row.workzone }}</td>
+                        <td class="fw-bold text-uppercase" data-tim="{{ row.tim }}" style="font-size: 0.72rem; color: #1e293b; white-space: nowrap;">
+                          {{ row.tim }}
+                          {% if row.team_flag == 'OGP' %}
+                            <span class="badge-team-flag badge-ogp">*OGP</span>
+                          {% else %}
+                            <span class="badge-team-flag badge-idle">*IDLE</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          <code class="fw-bold text-dark px-2 py-1 bg-light rounded border" style="font-size:0.72rem;">{{ row.track_order }}</code>
+                          {% if row.is_ps_today %}<span class="badge bg-success ms-1" style="font-size:0.55rem;">PS</span>{% endif %}
+                        </td>
+                        <td class="text-muted fw-medium" style="font-size: 0.70rem;" title="{{ row.odc }}">
+                          {% if row.kordinat and row.kordinat|clean_coords %}
+                            <a href="https://www.google.com/maps/search/?api=1&query={{ row.kordinat|clean_coords }}" target="_blank" class="link-maps text-decoration-none" title="Buka Koordinat GPS ({{ row.kordinat|clean_coords }})"><i class="bi bi-geo-alt-fill me-1"></i>{{ row.odc|default('-', true)|truncate(18) }}</a>
+                          {% else %}
+                            <span class="odc-badge">{{ row.odc|default('-', true)|truncate(18) }}</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% set sm_up = (row.status_morning or '')|upper %}
+                          {% set sm_cls = 'status-belum' %}
+                          {% if 'SEDANG' in sm_up %}{% set sm_cls = 'status-sedang' %}
+                          {% elif 'OKE' in sm_up %}{% set sm_cls = 'status-oke' %}
+                          {% elif 'PENDING' in sm_up or 'KENDALA' in sm_up or 'RUSAK' in sm_up %}{% set sm_cls = 'status-pending' %}
+                          {% elif 'PS' in sm_up or 'SETTING' in sm_up %}{% set sm_cls = 'status-ps' %}
+                          {% endif %}
+                          <span class="badge-soft-status {{ sm_cls }}">{{ row.status_morning|default('BELUM MAPPED', true) }}</span>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+
+              </div>
+            </div>
+          </div>
+        </div> <!-- /#pane-matriks -->
+
+        <!-- ================= PANE 4: ASSURANCE SALDO TIKET SUMMARY ================= -->
+        <div class="tab-pane fade" id="pane-assurance-summary" role="tabpanel">
+          
+          <!-- 4 GROUPED SECTIONS FOR ASSURANCE METRIC CARDS -->
+          
+          <!-- SECTION 1: TOTAL TIKET ACTIVE & SEGMENTASI -->
+          <div class="mb-4">
+            <h6 class="fw-bold text-uppercase mb-3 text-dark d-flex align-items-center gap-2" style="font-size: 0.88rem; letter-spacing: 0.05em;">
+              <i class="bi bi-pie-chart-fill text-primary"></i> 1. TOTAL TIKET ACTIVE &amp; SEGMENTASI
+            </h6>
+            <div class="row g-3 row-cols-2 row-cols-md-3 row-cols-xl-6">
+              <!-- Total Saldo -->
+              <div class="col">
+                <div class="card metric-card h-100" style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); cursor: pointer;" data-drilldown-type="assurance_saldo">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">TOTAL SALDO TIKET</div>
+                    <div class="metric-value text-white">{{ assurance.total_saldo }}</div>
+                    <div class="metric-footnote mt-2">Aktif Hari Ini</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- HVC Card (Gold, Diamond, Platinum) -->
+              <div class="col">
+                {% set hvc_total = assurance.hvc_gold_count + assurance.hvc_diamond_count + assurance.hvc_platinum_count %}
+                <div class="card metric-card metric-potensi h-100" style="cursor: pointer;" data-drilldown-type="hvc_gold">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">HVC</div>
+                    <div class="metric-value text-white">{{ hvc_total }}</div>
+                    <div class="ps-badge-container mt-1">
+                      <span class="badge-soft-summary">*Gold: {{ assurance.hvc_gold_count }}</span>
+                      <span class="badge-soft-summary">*Diamond: {{ assurance.hvc_diamond_count }}</span>
+                      <span class="badge-soft-summary">*Platinum: {{ assurance.hvc_platinum_count }}</span>
+                    </div>
+                    <div class="metric-footnote mt-1">PL-TSEL Priority</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Reguler -->
+              <div class="col">
+                <div class="card metric-card metric-ps h-100" style="cursor: pointer;" data-drilldown-type="reguler">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">REGULER</div>
+                    <div class="metric-value text-white">{{ assurance.reguler_count }}</div>
+                    <div class="metric-footnote mt-2">PL-TSEL Reguler</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SQM -->
+              <div class="col">
+                <div class="card metric-card metric-oke h-100" style="cursor: pointer;" data-drilldown-type="sqm">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">SQM</div>
+                    <div class="metric-value text-white">{{ assurance.sqm_count }}</div>
+                    <div class="metric-footnote mt-2">PL-TSEL Tiket SQM</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- RBS -->
+              <div class="col">
+                <div class="card metric-card metric-potensi h-100" style="cursor: pointer;" data-drilldown-type="rbs_indibiz">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">RBS</div>
+                    <div class="metric-value text-white">{{ assurance.rbs_indibiz_count }}</div>
+                    <div class="metric-footnote mt-2">Segmen RBS / Indibiz</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- UNSPEC -->
+              <div class="col">
+                <div class="card metric-card metric-oke h-100" style="cursor: pointer;" data-drilldown-type="unspec">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">UNSPEC</div>
+                    <div class="metric-value text-white">{{ assurance.unspec_count }}</div>
+                    <div class="metric-footnote mt-2">PL-TSEL Unspecified</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 2: FOKUS PENGAWALAN -->
+          <div class="mb-4">
+            <h6 class="fw-bold text-uppercase mb-3 text-dark d-flex align-items-center gap-2" style="font-size: 0.88rem; letter-spacing: 0.05em;">
+              <i class="bi bi-shield-exclamation text-warning"></i> 2. FOKUS PENGAWALAN
+            </h6>
+            <div class="row g-3 row-cols-2 row-cols-md-3 row-cols-xl-5">
+              <!-- Tiket Manja -->
+              <div class="col">
+                <div class="card metric-card metric-ogp h-100" style="cursor: pointer;" data-drilldown-type="tik_manja">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">TIKET MANJA</div>
+                    <div class="metric-value text-white">{{ assurance.manja_count }}</div>
+                    <div class="metric-footnote mt-2">Customer Assign</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- OSLA -->
+              <div class="col">
+                <div class="card metric-card metric-belum h-100" style="cursor: pointer;" data-drilldown-type="osla">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">OSLA (TTR &gt; 12)</div>
+                    <div class="metric-value text-white">{{ assurance.osla_count }}</div>
+                    <div class="metric-footnote mt-2">PL-TSEL TTR &gt; 12h</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Garansi -->
+              <div class="col">
+                <div class="card metric-card metric-ogp h-100" style="cursor: pointer;" data-drilldown-type="garansi">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">GARANSI</div>
+                    <div class="metric-value text-white">{{ assurance.garansi_count }}</div>
+                    <div class="metric-footnote mt-2">PL-TSEL Status Garansi</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Online Redaman -->
+              <div class="col">
+                <div class="card metric-card metric-belum h-100" style="cursor: pointer;" data-drilldown-type="online_redaman">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">ONLINE REDAMAN</div>
+                    <div class="metric-value text-white">{{ assurance.online_redaman_count }}</div>
+                    <div class="metric-footnote mt-2">Redaman &lt; -24 dB</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Gamas -->
+              <div class="col">
+                <div class="card metric-card metric-belum h-100" style="cursor: pointer;" data-drilldown-type="gamas">
+                  <div class="card-body px-3">
+                    <div class="metric-label text-truncate w-100">GAMAS</div>
+                    <div class="metric-value text-white">{{ assurance.gamas_count }}</div>
+                    <div class="metric-footnote mt-2">PL-TSEL Gangguan Massal</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 3: NEED MAPPING & SECTION 4: NEED CEK / ACTION REQUIRED -->
+          <div class="row g-4 mb-4">
+            <!-- Need Mapping -->
+            <div class="col-lg-5">
+              <h6 class="fw-bold text-uppercase mb-3 text-dark d-flex align-items-center gap-2" style="font-size: 0.88rem; letter-spacing: 0.05em;">
+                <i class="bi bi-diagram-3-fill text-info"></i> 3. NEED MAPPING
+              </h6>
+              <div class="row g-3 row-cols-2">
+                <div class="col">
+                  <div class="card metric-card metric-oke h-100" style="cursor: pointer;" data-drilldown-type="sqm">
+                    <div class="card-body px-3">
+                      <div class="metric-label text-truncate w-100">SQM</div>
+                      <div class="metric-value text-white">{{ assurance.sqm_count }}</div>
+                      <div class="metric-footnote mt-2">Need Mapping SQM</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="card metric-card metric-oke h-100" style="cursor: pointer;" data-drilldown-type="unspec">
+                    <div class="card-body px-3">
+                      <div class="metric-label text-truncate w-100">UNSPEC</div>
+                      <div class="metric-value text-white">{{ assurance.unspec_count }}</div>
+                      <div class="metric-footnote mt-2">Need Mapping Unspec</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Need Cek / Action Required -->
+            <div class="col-lg-7">
+              <h6 class="fw-bold text-uppercase mb-3 text-dark d-flex align-items-center gap-2" style="font-size: 0.88rem; letter-spacing: 0.05em;">
+                <i class="bi bi-exclamation-triangle-fill text-danger"></i> 4. NEED CEK / ACTION REQUIRED
+              </h6>
+              <div class="row g-3 row-cols-2">
+                <!-- Belum Dikerjakan -->
+                <div class="col">
+                  <div class="card metric-card metric-oke h-100" style="cursor: pointer;" data-drilldown-type="assurance_belum_dikerjakan">
+                    <div class="card-body px-3">
+                      <div class="metric-label text-truncate w-100">BELUM DIKERJAKAN</div>
+                      <div class="metric-value text-white">{{ assurance.belum_count }}</div>
+                      <div class="ps-badge-container mt-1">
+                        {% if assurance.belum_breakdown %}
+                          {% for b in assurance.belum_breakdown %}
+                            <span class="badge-soft-summary">*{{ b.jenis }} : {{ b.count }}</span>
+                          {% endfor %}
+                        {% endif %}
+                      </div>
+                      <div class="metric-footnote mt-1">PL-TSEL Need Action</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Undispatch -->
+                <div class="col">
+                  <div class="card metric-card metric-undispatch h-100" style="cursor: pointer;" data-drilldown-type="assurance_undispatch">
+                    <div class="card-body px-3">
+                      <div class="metric-label text-truncate w-100">UNDISPATCH</div>
+                      <div class="metric-value text-white">{{ assurance.undispatch_count }}</div>
+                      <div class="ps-badge-container mt-1">
+                        {% if assurance.undispatch_breakdown %}
+                          {% for b in assurance.undispatch_breakdown %}
+                            <span class="badge-soft-summary">*{{ b.jenis }} : {{ b.count }}</span>
+                          {% endfor %}
+                        {% endif %}
+                      </div>
+                      <div class="metric-footnote mt-1">PL-TSEL Belum Ada Tim</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+
+
+          <!-- Section 1: Matriks Ringkasan Saldo Tiket (Pivot Workzone & Wilsus x Jenis Tiket) -->
+          <div class="glass-card section-card mb-4">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><i class="bi bi-table text-danger me-2"></i>Matriks Ringkasan Saldo Tiket Gangguan</div>
+                <div class="section-subtitle">Pivot Workzone &amp; Wilsus x Jenis Tiket (Reguler, SQM, Unspec, Gamas, HVC)</div>
+              </div>
+              <div class="chart-icon"><i class="bi bi-grid-3x3-gap-fill text-danger"></i></div>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-bordered align-middle text-center sisa-pivot-table mb-0" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr class="table-light text-uppercase small border-bottom">
+                      <th style="width: 15%; text-align: left;">WORKZONE</th>
+                      <th style="width: 15%; text-align: left;">WILSUS</th>
+                      <th>REGULER</th>
+                      <th>SQM</th>
+                      <th>UNSPEC</th>
+                      <th>GAMAS</th>
+                      <th>HVC GOLD</th>
+                      <th>HVC DIAMOND / PLATINUM</th>
+                      <th class="bg-light text-dark fw-bold">GRAND TOTAL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for group in assurance.wz_wilsus_pivot %}
+                      {% set wz_name = group.workzone %}
+                      {% set sub_count = group.subrows|length %}
+                      {% for sub in group.subrows %}
+                        <tr>
+                          {% if loop.first %}
+                            <td rowspan="{{ sub_count + 1 }}" class="fw-bold align-middle bg-light text-start text-dark fs-6">{{ wz_name }}</td>
+                          {% endif %}
+                          <td class="text-start fw-semibold text-secondary">{{ sub.wilsus }}</td>
+                          {% set r_cnt = sub.counts.get('REGULER', 0) %}
+                          <td class="fw-bold clickable-pivot-cell {% if r_cnt > 0 %}text-success{% else %}text-muted opacity-50{% endif %}"
+                              data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="{{ sub.wilsus }}" data-jenis="REGULER" data-cnt="{{ r_cnt }}">
+                            {% if r_cnt > 0 %}{{ r_cnt }}{% else %}-{% endif %}
+                          </td>
+                          {% set s_cnt = sub.counts.get('SQM', 0) %}
+                          <td class="fw-bold clickable-pivot-cell {% if s_cnt > 0 %}text-info{% else %}text-muted opacity-50{% endif %}"
+                              data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="{{ sub.wilsus }}" data-jenis="SQM" data-cnt="{{ s_cnt }}">
+                            {% if s_cnt > 0 %}{{ s_cnt }}{% else %}-{% endif %}
+                          </td>
+                          {% set u_cnt = sub.counts.get('UNSPEC', 0) %}
+                          <td class="fw-bold clickable-pivot-cell {% if u_cnt > 0 %}text-teal{% else %}text-muted opacity-50{% endif %}"
+                              data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="{{ sub.wilsus }}" data-jenis="UNSPEC" data-cnt="{{ u_cnt }}">
+                            {% if u_cnt > 0 %}{{ u_cnt }}{% else %}-{% endif %}
+                          </td>
+                          {% set g_cnt = sub.counts.get('GAMAS', 0) %}
+                          <td class="fw-bold clickable-pivot-cell {% if g_cnt > 0 %}text-danger{% else %}text-muted opacity-50{% endif %}"
+                              data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="{{ sub.wilsus }}" data-jenis="GAMAS" data-cnt="{{ g_cnt }}">
+                            {% if g_cnt > 0 %}{{ g_cnt }}{% else %}-{% endif %}
+                          </td>
+                          {% set hg_cnt = sub.counts.get('HVC Gold', 0) %}
+                          <td class="fw-bold clickable-pivot-cell {% if hg_cnt > 0 %}text-primary{% else %}text-muted opacity-50{% endif %}"
+                              data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="{{ sub.wilsus }}" data-jenis="HVC Gold" data-cnt="{{ hg_cnt }}">
+                            {% if hg_cnt > 0 %}{{ hg_cnt }}{% else %}-{% endif %}
+                          </td>
+                          {% set hvc_other = sub.counts.get('HVC Diamond', 0) + sub.counts.get('HVC Platinum', 0) %}
+                          <td class="fw-bold clickable-pivot-cell {% if hvc_other > 0 %}text-indigo{% else %}text-muted opacity-50{% endif %}"
+                              data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="{{ sub.wilsus }}" data-jenis="HVC DIAMOND / PLATINUM" data-cnt="{{ hvc_other }}">
+                            {% if hvc_other > 0 %}{{ hvc_other }}{% else %}-{% endif %}
+                          </td>
+                          <td class="fw-bold text-dark bg-light clickable-pivot-cell"
+                              data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="{{ sub.wilsus }}" data-jenis="TOTAL" data-cnt="{{ sub.total }}">
+                            {{ sub.total }}
+                          </td>
+                        </tr>
+                      {% endfor %}
+                      <!-- Workzone Subtotal Row -->
+                      <tr class="fw-bold border-bottom" style="background: rgba(241, 245, 249, 0.75); border-top: 2px solid #cbd5e1;">
+                        <td class="text-start text-uppercase text-dark">{{ wz_name }} TOTAL</td>
+                        <td class="text-success clickable-pivot-cell" data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="-" data-jenis="REGULER" data-cnt="{{ group.wz_totals.get('REGULER', 0) }}">
+                          {% if group.wz_totals.get('REGULER', 0) > 0 %}{{ group.wz_totals.get('REGULER', 0) }}{% else %}-{% endif %}
+                        </td>
+                        <td class="text-info clickable-pivot-cell" data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="-" data-jenis="SQM" data-cnt="{{ group.wz_totals.get('SQM', 0) }}">
+                          {% if group.wz_totals.get('SQM', 0) > 0 %}{{ group.wz_totals.get('SQM', 0) }}{% else %}-{% endif %}
+                        </td>
+                        <td class="text-teal clickable-pivot-cell" data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="-" data-jenis="UNSPEC" data-cnt="{{ group.wz_totals.get('UNSPEC', 0) }}">
+                          {% if group.wz_totals.get('UNSPEC', 0) > 0 %}{{ group.wz_totals.get('UNSPEC', 0) }}{% else %}-{% endif %}
+                        </td>
+                        <td class="text-danger clickable-pivot-cell" data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="-" data-jenis="GAMAS" data-cnt="{{ group.wz_totals.get('GAMAS', 0) }}">
+                          {% if group.wz_totals.get('GAMAS', 0) > 0 %}{{ group.wz_totals.get('GAMAS', 0) }}{% else %}-{% endif %}
+                        </td>
+                        <td class="text-primary clickable-pivot-cell" data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="-" data-jenis="HVC Gold" data-cnt="{{ group.wz_totals.get('HVC Gold', 0) }}">
+                          {% if group.wz_totals.get('HVC Gold', 0) > 0 %}{{ group.wz_totals.get('HVC Gold', 0) }}{% else %}-{% endif %}
+                        </td>
+                        {% set wz_hvc_other = group.wz_totals.get('HVC Diamond', 0) + group.wz_totals.get('HVC Platinum', 0) %}
+                        <td class="text-indigo clickable-pivot-cell" data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="-" data-jenis="HVC DIAMOND / PLATINUM" data-cnt="{{ wz_hvc_other }}">
+                          {% if wz_hvc_other > 0 %}{{ wz_hvc_other }}{% else %}-{% endif %}
+                        </td>
+                        <td class="text-dark fs-6 bg-secondary bg-opacity-10 clickable-pivot-cell" data-module="assurance" data-wz="{{ wz_name }}" data-wilsus="-" data-jenis="TOTAL" data-cnt="{{ group.wz_grand_total }}">
+                          {{ group.wz_grand_total }}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+
+                  <tfoot>
+                    <tr class="table-light fw-bold text-uppercase" style="border-top: 3px double #94a3b8; font-size: 0.85rem;">
+                      <td colspan="2" class="text-start text-dark fs-6">GRAND TOTAL SALDO TIKET</td>
+                      {% set reg_tot = assurance.grand_jenis_totals.get('REGULER', 0) %}
+                      <td class="text-success fs-6 clickable-pivot-cell" data-module="assurance" data-wz="GRAND TOTAL" data-wilsus="-" data-jenis="REGULER" data-cnt="{{ reg_tot }}">{{ reg_tot }}</td>
+                      {% set sqm_tot = assurance.grand_jenis_totals.get('SQM', 0) %}
+                      <td class="text-info fs-6 clickable-pivot-cell" data-module="assurance" data-wz="GRAND TOTAL" data-wilsus="-" data-jenis="SQM" data-cnt="{{ sqm_tot }}">{{ sqm_tot }}</td>
+                      {% set unspec_tot = assurance.grand_jenis_totals.get('UNSPEC', 0) %}
+                      <td class="text-teal fs-6 clickable-pivot-cell" data-module="assurance" data-wz="GRAND TOTAL" data-wilsus="-" data-jenis="UNSPEC" data-cnt="{{ unspec_tot }}">{{ unspec_tot }}</td>
+                      {% set gamas_tot = assurance.grand_jenis_totals.get('GAMAS', 0) %}
+                      <td class="text-danger fs-6 clickable-pivot-cell" data-module="assurance" data-wz="GRAND TOTAL" data-wilsus="-" data-jenis="GAMAS" data-cnt="{{ gamas_tot }}">{{ gamas_tot }}</td>
+                      {% set hg_tot = assurance.grand_jenis_totals.get('HVC Gold', 0) %}
+                      <td class="text-primary fs-6 clickable-pivot-cell" data-module="assurance" data-wz="GRAND TOTAL" data-wilsus="-" data-jenis="HVC Gold" data-cnt="{{ hg_tot }}">{{ hg_tot }}</td>
+                      {% set grand_hvc_other = assurance.grand_jenis_totals.get('HVC Diamond', 0) + assurance.grand_jenis_totals.get('HVC Platinum', 0) %}
+                      <td class="text-indigo fs-6 clickable-pivot-cell" data-module="assurance" data-wz="GRAND TOTAL" data-wilsus="-" data-jenis="HVC DIAMOND / PLATINUM" data-cnt="{{ grand_hvc_other }}">{{ grand_hvc_other }}</td>
+                      <td class="text-dark fs-6 bg-light clickable-pivot-cell" data-module="assurance" data-wz="GRAND TOTAL" data-wilsus="-" data-jenis="TOTAL" data-cnt="{{ assurance.total_saldo }}">{{ assurance.total_saldo }}</td>
+                    </tr>
+                  </tfoot>
+
+                </table>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- Section 2 & 3: Card Grids for Hasil Ukur & Information -->
+          <div class="row g-4 mb-4">
+            <!-- Hasil Ukur Cards Grid -->
+            <div class="col-lg-7">
+              <div class="glass-card section-card h-100 p-3">
+                <div class="section-title mb-3" style="font-size: 1rem;"><i class="bi bi-speedometer2 text-danger me-2"></i>DISTRIBUSI HASIL UKUR</div>
+                <div class="row g-2">
+                  {% for hu, count in assurance.hasil_ukur_dist.items() %}
+                    {% set card_bg = 'bg-light border' %}
+                    {% set badge_cls = 'bg-danger' %}
+                    {% if hu == 'ONLINE' %}{% set card_bg = 'bg-success bg-opacity-10 border border-success-subtle' %}{% set badge_cls = 'bg-success' %}
+                    {% elif hu == 'LOS' %}{% set card_bg = 'bg-danger bg-opacity-10 border border-danger-subtle' %}{% set badge_cls = 'bg-danger' %}
+                    {% elif hu == 'OFFLINE' %}{% set card_bg = 'bg-warning bg-opacity-10 border border-warning-subtle' %}{% set badge_cls = 'bg-warning text-dark' %}
+                    {% endif %}
+                    <div class="col-6 col-sm-4">
+                      <div class="p-3 rounded text-center {{ card_bg }}">
+                        <div class="text-uppercase fw-bold text-dark mb-1" style="font-size: 0.75rem;">{{ hu }}</div>
+                        <span class="badge {{ badge_cls }} rounded-pill px-3 py-1 fs-6 fw-extrabold">{{ count }}</span>
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <!-- Information Card -->
+            <div class="col-lg-5">
+              <div class="glass-card section-card h-100 p-3">
+                <div class="section-title mb-3" style="font-size: 1rem;"><i class="bi bi-info-circle-fill text-info me-2"></i>INFORMASI SALDO ASSURANCE</div>
+                <div class="d-flex flex-column gap-3">
+                  <div class="p-3 rounded bg-white border d-flex align-items-center justify-content-between">
+                    <div>
+                      <div class="text-muted small fw-bold text-uppercase">Source Master Data</div>
+                      <div class="fw-extrabold text-dark" style="font-size: 0.92rem;">Google Sheet Assurance</div>
+                    </div>
+                    <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Synced</span>
+                  </div>
+                  <div class="p-3 rounded bg-white border d-flex align-items-center justify-content-between">
+                    <div>
+                      <div class="text-muted small fw-bold text-uppercase">Sistem Pengukuran TTR</div>
+                      <div class="fw-extrabold text-dark" style="font-size: 0.92rem;">Jam Kerja vs Exclude</div>
+                    </div>
+                    <span class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle px-2 py-1">TTR &gt; 12h</span>
+                  </div>
+                  <div class="p-3 rounded bg-white border d-flex align-items-center justify-content-between">
+                    <div>
+                      <div class="text-muted small fw-bold text-uppercase">Status Pengerjaan</div>
+                      <div class="fw-extrabold text-dark" style="font-size: 0.92rem;">Real-time Kawan App Sync</div>
+                    </div>
+                    <span class="badge bg-info bg-opacity-10 text-info border border-info-subtle px-2 py-1">Live Sync</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+        </div> <!-- /#pane-assurance-summary -->
+
+        <!-- ================= PANE: MATRIKS TIKET GANGGUAN ASSURANCE ================= -->
+        <div class="tab-pane fade" id="pane-assurance-matriks" role="tabpanel">
+          <div class="glass-card section-card mb-4">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><i class="bi bi-grid-3x3-gap-fill text-warning me-2"></i>Matriks Order Tiket Gangguan Assurance</div>
+                <div class="section-subtitle">Tampilan Matriks per Workzone & Tim Teknisi Lapangan (Grouped By Workzone)</div>
+              </div>
+              <div class="chart-icon"><i class="bi bi-table text-warning"></i></div>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table dashboard-table table-bordered align-middle" id="assuranceMatrixTable" style="font-size: 0.78rem; width: 100%;">
+                  <thead>
+                    <tr class="table-dark text-uppercase" style="font-size: 0.72rem;">
+                      <th>WORKZONE</th>
+                      <th>Team name</th>
+                      <th>Order Code</th>
+                      <th>ODP Name</th>
+                      <th>WILSUS</th>
+                      <th>Status</th>
+                      <th>Jenis tiket</th>
+                      <th>TTR</th>
+                      <th>Manja (yes / No)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in assurance.assurance_matrix %}
+                      <tr class="matrix-compact-row bg-white">
+                        <td>{{ row.workzone|default('KOSONG', true) }}</td>
+                        <td data-tim="{{ row.tim|default('-', true) }}">
+                          <span class="fw-bold text-uppercase" style="font-size:0.80rem; color:#1e293b;">{{ row.tim|default('-', true) }}</span>
+                        </td>
+                        <td><code class="fw-bold text-danger px-2 py-1 bg-danger bg-opacity-10 rounded border border-danger-subtle">{{ row.incident }}</code></td>
+                        <td><span class="odc-badge">{{ row.odc_clean }}</span></td>
+                        <td>
+                          {% if row.wilsus and row.wilsus != '-' %}
+                            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle px-2 py-1 fw-bold" style="font-size: 0.70rem;">{{ row.wilsus }}</span>
+                          {% else %}
+                            <span class="text-muted small">-</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% set sk_up = (row.status_kawan or '')|upper %}
+                          {% set sk_cls = 'bg-secondary text-white fw-bold' %}
+                          {% if 'BELUM' in sk_up %}{% set sk_cls = 'bg-danger text-white fw-bold' %}
+                          {% elif 'BERANGKAT' in sk_up or 'TIBA' in sk_up or 'SEDANG' in sk_up %}{% set sk_cls = 'bg-primary text-white fw-bold' %}
+                          {% elif 'PENDING' in sk_up %}{% set sk_cls = 'bg-warning text-dark fw-bold' %}
+                          {% endif %}
+                          <span class="badge {{ sk_cls }} px-2 py-1 shadow-sm" style="font-size: 0.72rem; display: inline-block;">{{ row.status_kawan|default('BELUM DIKERJAKAN', true) }}</span>
+                        </td>
+                        <td>
+                          {% set jt = row.jenis_tiket %}
+                          {% set jt_cls = 'bg-secondary text-white' %}
+                          {% if 'Gold' in jt %}{% set jt_cls = 'bg-primary text-white' %}
+                          {% elif 'Diamond' in jt %}{% set jt_cls = 'bg-info text-dark' %}
+                          {% elif 'Platinum' in jt %}{% set jt_cls = 'bg-indigo text-white' %}
+                          {% elif 'SQM' in jt %}{% set jt_cls = 'bg-info text-dark' %}
+                          {% elif 'UNSPEC' in jt %}{% set jt_cls = 'bg-teal text-white' %}
+                          {% elif 'GAMAS' in jt %}{% set jt_cls = 'bg-danger text-white' %}
+                          {% elif 'REGULER' in jt %}{% set jt_cls = 'bg-success text-white' %}
+                          {% endif %}
+                          <span class="badge {{ jt_cls }} fw-bold px-2 py-1" style="font-size: 0.72rem;">{{ jt }}</span>
+                        </td>
+                        <td><span class="fw-bold text-dark">{{ row.ttr|default('-', true) }}</span></td>
+                        <td class="text-center">
+                          {% if row.is_manja == 'YES' %}
+                            <span class="badge bg-warning text-dark border border-warning fw-bold px-2 py-1">YES</span>
+                          {% else %}
+                            <span class="badge bg-light text-muted border px-2 py-1">NO</span>
+                          {% endif %}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= PANE 5: DAFTAR TIKET GANGGUAN ASSURANCE ================= -->
+        <div class="tab-pane fade" id="pane-assurance-table" role="tabpanel">
+
+          <div class="glass-card section-card">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><i class="bi bi-list-check text-danger me-2"></i>Daftar Tiket Gangguan Assurance ({{ assurance.tickets|length }})</div>
+                <div class="section-subtitle">Daftar lengkap tiket gangguan aktif dengan filter dan pencarian cepat</div>
+              </div>
+              <div class="chart-icon"><i class="bi bi-ticket-detailed text-danger"></i></div>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table dashboard-table table-bordered align-middle" id="assuranceDetailTable" style="font-size: 0.72rem; width: 100%;">
+                  <thead>
+                    <tr class="table-dark text-uppercase" style="font-size: 0.70rem;">
+                      <th>INCIDENT</th>
+                      <th>ODC REAL</th>
+                      <th>SERVICE NO</th>
+                      <th>CUSTOMER SEGMENT</th>
+                      <th>REPORTED DATE</th>
+                      <th>CUSTOMER TYPE</th>
+                      <th>HASIL UKUR</th>
+                      <th>REDAMAN</th>
+                      <th>TTR</th>
+                      <th>FLAG</th>
+                      <th>TIM</th>
+                      <th>WILSUS</th>
+                      <th>STATUS KAWAN</th>
+                      <th>CATATAN</th>
+                      <th>JAM MANJA</th>
+                      <th>SUMMARY</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in assurance.tickets %}
+                      <tr class="bg-white">
+                        <td><code class="fw-bold text-danger px-2 py-1 bg-danger bg-opacity-10 rounded border border-danger-subtle">{{ row.incident }}</code></td>
+                        <td class="fw-bold text-dark">{{ row.odc_clean }}</td>
+                        <td class="fw-semibold text-secondary">{{ row.service_no }}</td>
+                        <td><span class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle fw-semibold">{{ row.customer_segment }}</span></td>
+                        <td class="text-nowrap">{{ row.reported_date }}</td>
+                        <td class="fw-semibold">{{ row.customer_type|default('-', true) }}</td>
+                        <td>
+                          {% set hu_up = (row.hasil_ukur or '')|upper %}
+                          {% set hu_cls = 'bg-secondary' %}
+                          {% if 'LOS' in hu_up %}{% set hu_cls = 'bg-danger' %}
+                          {% elif 'ONLINE' in hu_up %}{% set hu_cls = 'bg-success' %}
+                          {% elif 'OFFLINE' in hu_up %}{% set hu_cls = 'bg-warning text-dark' %}
+                          {% endif %}
+                          <span class="badge {{ hu_cls }} px-2 py-1">{{ row.hasil_ukur|default('-', true) }}</span>
+                        </td>
+                        <td class="fw-bold {% if row.redaman != '-' and row.redaman != '' %}text-danger{% else %}text-muted{% endif %}">{{ row.redaman|default('-', true) }}</td>
+                        <td class="fw-bold text-dark">{{ row.ttr|default('-', true) }}</td>
+                        <td>
+                          {% set fl_up = (row.flag or '')|upper %}
+                          <span class="badge {% if 'EXC' in fl_up %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">{{ row.flag|default('-', true) }}</span>
+                        </td>
+                        <td class="fw-bold text-dark">{{ row.tim|default('-', true) }}</td>
+                        <td>{{ row.wilsus|default('-', true) }}</td>
+                        <td>
+                          {% set sk_up = (row.status_kawan or '')|upper %}
+                          {% set sk_cls = 'bg-light text-dark border' %}
+                          {% if 'BELUM' in sk_up %}{% set sk_cls = 'bg-danger bg-opacity-15 text-danger border border-danger' %}
+                          {% elif 'BERANGKAT' in sk_up or 'TIBA' in sk_up or 'SEDANG' in sk_up %}{% set sk_cls = 'bg-primary bg-opacity-15 text-primary border border-primary' %}
+                          {% elif 'PENDING' in sk_up %}{% set sk_cls = 'bg-warning bg-opacity-15 text-warning border border-warning' %}
+                          {% endif %}
+                          <span class="badge {{ sk_cls }}">{{ row.status_kawan|default('BELUM MAPPED', true) }}</span>
+                        </td>
+                        <td class="catatan-cell" style="white-space: pre-wrap; word-break: break-word; max-width: 150px;">{{ row.catatan|default('-', true) }}</td>
+                        <td class="fw-bold text-primary">{{ row.jam_manja|default('-', true) }}</td>
+                        <td class="catatan-cell" style="white-space: pre-wrap; word-break: break-word; max-width: 200px;">{{ row.summary|default('-', true) }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div> <!-- /#pane-assurance-table -->
+
+      </div> <!-- /#mainDashboardTabContent -->
+
+
+    </div>
+  </main>
+</div>
+
+<!-- Floating Undispatch Widget -->
+<div id="floating-undispatch" style="
+  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  background: #1e293b; color: white; border-radius: 16px;
+  padding: 14px 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+  display: flex; align-items: center; gap: 14px;
+  cursor: pointer; transition: all 0.3s ease;
+  border: 2px solid rgba(255,255,255,0.1);
+  min-width: 180px;
+" data-drilldown-type="undispatch" class="metric-card">
+  <div style="background: #ef4444; border-radius: 10px; width: 44px; height: 44px; display:flex; align-items:center; justify-content:center;">
+    <i class="bi bi-exclamation-triangle-fill" style="font-size: 1.2rem;"></i>
+  </div>
+  <div>
+    <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8;">Undispatch</div>
+    <div style="font-size: 1.6rem; font-weight: 800; line-height: 1;" id="floating-undispatch-count">{{ undispatch_count }}</div>
+    <div style="font-size: 0.65rem; color: #64748b;">Order tanpa TIM</div>
+  </div>
+</div>
+
+<!-- Modal untuk Drill-down Detail -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content glass-card">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title section-title" id="detailModalLabel">Data Detail</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="table-responsive">
+          <table class="table dashboard-table w-100" id="drilldownTable" style="width: 100%;">
+            <thead>
+              <tr>
+                <th class="th-progress">TRACK ORDER</th>
+                <th class="th-progress">WORKORDER</th>
+                <th class="th-progress">JENIS ORDER</th>
+                <th class="th-progress">ODC</th>
+                <th class="th-area">TIM</th>
+                <th class="th-done">STATUS MORNING</th>
+                <th class="th-cust">CATATAN</th>
+                <th class="th-hr">ESKAL DAMAN</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Isi akan di-render via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="sisa-pivot-data" type="application/json">{{ sisa_pivot|tojson }}</script>
+<script id="jam-ps-data" type="application/json">{{ jam_ps_chart|tojson }}</script>
+<script id="jam-re-data" type="application/json">{{ jam_re_chart|tojson }}</script>
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    const activeTabInput = document.getElementById("active_tab_input");
+
+    function clearSidebarActive() {
+      document.querySelectorAll(".sidebar .menu-link").forEach(el => el.classList.remove("active"));
+    }
+
+    function showMainPane(paneId) {
+      if (activeTabInput) activeTabInput.value = paneId;
+      document.querySelectorAll(".tab-pane").forEach(p => {
+        p.classList.remove("show", "active");
+      });
+      const target = document.getElementById(paneId);
+      if (target) target.classList.add("show", "active");
+    }
+
+    function showFollowUpSub(subId) {
+      if (activeTabInput) activeTabInput.value = "sub-followup-" + subId;
+      document.querySelectorAll("#pane-followup .sub-tab-content").forEach(c => c.classList.add("d-none"));
+      const target = document.getElementById(subId);
+      if (target) target.classList.remove("d-none");
+    }
+
+    function updateFloatingWidget(paneId) {
+      const widget = document.getElementById("floating-undispatch");
+      const countEl = document.getElementById("floating-undispatch-count");
+      if (!widget || !countEl) return;
+      if (paneId && paneId.startsWith("pane-assurance")) {
+        widget.setAttribute("data-drilldown-type", "assurance_undispatch");
+        countEl.textContent = "{{ assurance.undispatch_count }}";
+        const footnote = widget.querySelector("div:last-child div:last-child");
+        if (footnote) footnote.textContent = "Tiket tanpa TIM";
+      } else {
+        widget.setAttribute("data-drilldown-type", "undispatch");
+        countEl.textContent = "{{ undispatch_count }}";
+        const footnote = widget.querySelector("div:last-child div:last-child");
+        if (footnote) footnote.textContent = "Order tanpa TIM";
+      }
+    }
+
+    // 1. Sidebar Summary Click
+    const navSummary = document.getElementById("side-nav-summary");
+    if (navSummary) {
+      navSummary.addEventListener("click", function() {
+        clearSidebarActive();
+        this.classList.add("active");
+        showMainPane("pane-summary");
+        updateFloatingWidget("pane-summary");
+      });
+    }
+
+    // Sub 1: Validasi Kendala
+    const navSubValidasi = document.getElementById("side-nav-validasi");
+    if (navSubValidasi) {
+      navSubValidasi.addEventListener("click", function() {
+        clearSidebarActive();
+        this.classList.add("active");
+        showMainPane("pane-followup");
+        showFollowUpSub("sub-validasi");
+        updateFloatingWidget("pane-followup");
+      });
+    }
+
+    // Sub 2: Need FU & Cek Pending
+    const navSubFuPending = document.getElementById("side-nav-fu-pending");
+    if (navSubFuPending) {
+      navSubFuPending.addEventListener("click", function() {
+        clearSidebarActive();
+        this.classList.add("active");
+        showMainPane("pane-followup");
+        showFollowUpSub("sub-fu-pending");
+        updateFloatingWidget("pane-followup");
+      });
+    }
+
+    // Sub 3: Detail Potensi
+    const navSubPotensi = document.getElementById("side-nav-potensi");
+    if (navSubPotensi) {
+      navSubPotensi.addEventListener("click", function() {
+        clearSidebarActive();
+        this.classList.add("active");
+        showMainPane("pane-followup");
+        showFollowUpSub("sub-potensi");
+        updateFloatingWidget("pane-followup");
+      });
+    }
+
+    // 3. Sidebar Matriks Order Click
+    const navMatriks = document.getElementById("side-nav-matriks");
+    if (navMatriks) {
+      navMatriks.addEventListener("click", function() {
+        clearSidebarActive();
+        this.classList.add("active");
+        showMainPane("pane-matriks");
+        updateFloatingWidget("pane-matriks");
+        if (window.dataTable) {
+          setTimeout(() => { window.dataTable.columns.adjust().draw(); }, 100);
+        }
+      });
+    }
+
+    // 4. Sidebar Assurance Summary Click
+    const navAssuranceSummary = document.getElementById("side-nav-assurance-summary");
+    if (navAssuranceSummary) {
+      navAssuranceSummary.addEventListener("click", function() {
+        clearSidebarActive();
+        this.classList.add("active");
+        showMainPane("pane-assurance-summary");
+        updateFloatingWidget("pane-assurance-summary");
+      });
+    }
+
+    // 5. Sidebar Assurance Matriks Click
+    const navAssuranceMatriks = document.getElementById("side-nav-assurance-matriks");
+    if (navAssuranceMatriks) {
+      navAssuranceMatriks.addEventListener("click", function() {
+        clearSidebarActive();
+        this.classList.add("active");
+        showMainPane("pane-assurance-matriks");
+        updateFloatingWidget("pane-assurance-matriks");
+        if (window.assuranceMatrixTable) {
+          setTimeout(() => { window.assuranceMatrixTable.columns.adjust().draw(); }, 100);
+        }
+      });
+    }
+
+    // 6. Sidebar Assurance Table Click
+    const navAssuranceTable = document.getElementById("side-nav-assurance-table");
+    if (navAssuranceTable) {
+      navAssuranceTable.addEventListener("click", function() {
+        clearSidebarActive();
+        this.classList.add("active");
+        showMainPane("pane-assurance-table");
+        updateFloatingWidget("pane-assurance-table");
+        if (window.assuranceTable) {
+          setTimeout(() => { window.assuranceTable.columns.adjust().draw(); }, 100);
+        }
+      });
+    }
+
+    // Restore initial active tab after page reload / filter form submit
+    const initTab = "{{ filters.active_tab|default('pane-summary', true) }}";
+    if (initTab === "pane-assurance-matriks" && navAssuranceMatriks) {
+      navAssuranceMatriks.click();
+    } else if (initTab === "pane-assurance-summary" && navAssuranceSummary) {
+      navAssuranceSummary.click();
+    } else if (initTab === "pane-assurance-table" && navAssuranceTable) {
+      navAssuranceTable.click();
+    } else if (initTab === "pane-matriks" && navMatriks) {
+      navMatriks.click();
+    } else if (initTab === "sub-followup-sub-validasi" && navSubValidasi) {
+      navSubValidasi.click();
+    } else if (initTab === "sub-followup-sub-fu-pending" && navSubFuPending) {
+      navSubFuPending.click();
+    } else if (initTab === "sub-followup-sub-potensi" && navSubPotensi) {
+      navSubPotensi.click();
+    } else if (initTab === "pane-summary" && navSummary) {
+      navSummary.click();
+    }
+  });
+</script>
+
+
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

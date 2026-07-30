@@ -1,0 +1,1964 @@
+from __future__ import annotations
+
+import csv
+import io
+import os
+import re
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
+
+import requests
+from flask import Flask, jsonify, render_template, request
+from flask_sqlalchemy import SQLAlchemy
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.abspath(os.path.dirname(__file__)), 'orders.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+class Order(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    track_order = db.Column(db.String(100), unique=True, nullable=False)
+    tim = db.Column(db.String(100))
+    workorder = db.Column(db.String(100))
+    odc = db.Column(db.String(100))
+    status = db.Column(db.String(100))
+    status_morning = db.Column(db.String(100))
+    catatan = db.Column(db.Text)
+    jam_re = db.Column(db.String(50))
+    jam_ps = db.Column(db.String(50))
+    status_date_raw = db.Column(db.String(100))
+    status_date_parsed = db.Column(db.String(20))
+    date_created_raw = db.Column(db.String(100))
+    date_created_parsed = db.Column(db.String(20))
+    date_modified_raw = db.Column(db.String(100))
+    date_modified_parsed = db.Column(db.String(20))
+    crm_order_type = db.Column(db.String(100))
+    product_name = db.Column(db.String(255))
+    tgl_ps = db.Column(db.String(50))
+    tgl_ps_parsed = db.Column(db.String(20))
+    workzone = db.Column(db.String(100))
+    dispatch_date = db.Column(db.String(20)) # New field for DISPATCH column
+    kordinat = db.Column(db.String(100))
+    wilsus = db.Column(db.String(100))
+    eskal_daman = db.Column(db.String(255))
+    validasi = db.Column(db.String(100))
+    jenis_order = db.Column(db.String(100))
+
+    def to_dict(self):
+        return {
+            "TIM": self.tim,
+            "track_order": self.track_order,
+            "Workorder": self.workorder,
+            "ODC": self.odc,
+            "Status": self.status,
+            "status morning": self.status_morning,
+            "Catatan": self.catatan,
+            "Jam re": self.jam_re,
+            "Jam PS": self.jam_ps,
+            "Status Date": self.status_date_raw,
+            "status_date_parsed": self.status_date_parsed,
+            "Date Created": self.date_created_raw,
+            "date_created_parsed": self.date_created_parsed,
+            "Date Modified": self.date_modified_raw,
+            "date_modified_parsed": self.date_modified_parsed,
+            "crm_order_type": self.crm_order_type,
+            "product_name": self.product_name,
+            "tgl_ps": self.tgl_ps,
+            "tgl_ps_parsed": self.tgl_ps_parsed,
+            "workzone": self.workzone,
+            "dispatch_date": self.dispatch_date,
+            "kordinat": self.kordinat,
+            "wilsus": self.wilsus,
+            "eskal_daman": self.eskal_daman,
+            "validasi": self.validasi,
+            "jenis_order": self.jenis_order or ""
+        }
+
+
+def clean_odc_real(dev_name: str | None, odc_real: str | None) -> str:
+    # Example: ODP-PGT-FD/030 FD/D02/030.01 -> ODP-PGT-FD/030
+    src = (dev_name or "").strip()
+    if not src:
+        src = (odc_real or "").strip()
+    if not src:
+        return "-"
+    parts = src.split()
+    return parts[0] if parts else src
+
+
+class AssuranceTicket(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    incident = db.Column(db.String(100), unique=True, nullable=False)
+    device_name = db.Column(db.String(255))
+    service_no = db.Column(db.String(100))
+    workzone = db.Column(db.String(100))
+    summary = db.Column(db.Text)
+    customer_segment = db.Column(db.String(100))
+    reported_date = db.Column(db.String(100))
+    customer_type = db.Column(db.String(100))
+    guarante_status = db.Column(db.String(100))
+    description_assignment = db.Column(db.String(255))
+    booking_date = db.Column(db.String(100))
+    hasil_ukur = db.Column(db.String(100))
+    redaman = db.Column(db.String(100))
+    ttr = db.Column(db.String(100))
+    flag = db.Column(db.String(100))
+    tim = db.Column(db.String(100))
+    odc_real = db.Column(db.String(100))
+    wilsus = db.Column(db.String(100))
+    status_kawan = db.Column(db.String(100))
+    catatan = db.Column(db.Text)
+    jam_manja = db.Column(db.String(100))
+    tim_insera = db.Column(db.String(100))
+    tim_kawan = db.Column(db.String(100))
+
+    def to_dict(self):
+        return {
+            "incident": self.incident,
+            "device_name": self.device_name,
+            "odc_clean": clean_odc_real(self.device_name, self.odc_real),
+            "service_no": self.service_no,
+            "workzone": self.workzone,
+            "summary": self.summary,
+            "customer_segment": self.customer_segment,
+            "reported_date": self.reported_date,
+            "customer_type": self.customer_type,
+            "guarante_status": self.guarante_status,
+            "description_assignment": self.description_assignment,
+            "booking_date": self.booking_date,
+            "hasil_ukur": self.hasil_ukur,
+            "redaman": self.redaman,
+            "ttr": self.ttr,
+            "flag": self.flag,
+            "tim": self.tim,
+            "odc_real": self.odc_real,
+            "wilsus": self.wilsus,
+            "status_kawan": self.status_kawan,
+            "catatan": self.catatan,
+            "jam_manja": self.jam_manja,
+            "tim_insera": self.tim_insera,
+            "tim_kawan": self.tim_kawan,
+        }
+
+
+
+SHEET_CSV_URL = (
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vQhJ14Fz-jQmorjsI3LYacfF-URCZ_vdh9vKiv0arRSri8PSsmkslChsUWKkPTyD5hXQX1A_gQO_8cA/"
+    "pub?gid=0&single=true&output=csv"
+)
+
+ASSURANCE_SHEET_CSV_URL = (
+    "https://docs.google.com/spreadsheets/d/1gTlZxWfKlCENvDVEDKS_qHrLqNLBXsFsy0utTv2u_hY/"
+    "export?format=csv&gid=422466574"
+)
+
+
+
+def normalize_text(value: str | None) -> str:
+    return (value or "").strip()
+
+
+def normalize_upper(value: str | None) -> str:
+    return normalize_text(value).upper()
+
+
+def fetch_sheet_rows() -> list[dict[str, str]]:
+    response = requests.get(SHEET_CSV_URL, timeout=30)
+    response.raise_for_status()
+    content = response.content.decode("utf-8-sig", errors="replace")
+    return list(csv.DictReader(io.StringIO(content)))
+
+
+def is_truthy_text(value: str) -> bool:
+    return normalize_text(value) != ""
+
+
+def parse_sheet_date(value: str) -> str:
+    text = normalize_text(value)
+    if not text:
+        return ""
+
+    formats = [
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S",
+        "%m/%d/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+        "%d-%m-%Y %H:%M:%S",
+        "%m/%d/%Y",
+        "%d/%m/%Y",
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%d-%m-%Y",
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return text[:10] if len(text) >= 10 else text
+
+
+def clean_coordinates(coord_str: str) -> str:
+    if not coord_str or str(coord_str).strip() in {"-", "", "None"}:
+        return ""
+    s = str(coord_str).strip()
+    match = re.search(r'(-?\d+)[,\.](\d+)\s*[,\s;:]\s*(1\d+)[,\.](\d+)', s)
+    if match:
+        lat_int, lat_dec, lng_int, lng_dec = match.groups()
+        return f"{lat_int}.{lat_dec},{lng_int}.{lng_dec}"
+    match_std = re.search(r'(-?\d+\.\d+)\s*[,\s]\s*(1\d+\.\d+)', s)
+    if match_std:
+        return f"{match_std.group(1)},{match_std.group(2)}"
+    return s.replace(" ", "")
+
+app.jinja_env.filters['clean_coords'] = clean_coordinates
+
+
+def dedupe_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    preferred_statuses = {
+        "COMPWORK": 5,
+        "WORKFAIL": 4,
+        "STARTWORK": 3,
+        "VALCOMP": 2,
+        "ACTCOMP": 1,
+        "VALSTART": 0,
+    }
+    buckets: dict[str, dict[str, str]] = {}
+
+    for row in rows:
+        track_order = normalize_text(row.get("track_order"))
+        if not track_order:
+            track_order = normalize_text(row.get("SC Order No/Track ID/CSRM No"))
+        if not track_order:
+            continue
+
+        current = buckets.get(track_order)
+        if current is None:
+            buckets[track_order] = row
+            continue
+
+        current_score = preferred_statuses.get(normalize_upper(current.get("Status")), -1)
+        new_score = preferred_statuses.get(normalize_upper(row.get("Status")), -1)
+        if new_score >= current_score:
+            buckets[track_order] = row
+
+    return list(buckets.values())
+
+
+def match_status(row: dict[str, str], allowed: set[str]) -> bool:
+    val = row.get("Status") or row.get("status")
+    return normalize_upper(val) in allowed
+
+
+def match_status_morning(row: dict[str, str], expected: str) -> bool:
+    val = row.get("status morning") or row.get("status_morning")
+    return normalize_upper(val) == expected.upper()
+
+
+def get_product_name_normalized(row: dict) -> str:
+    product_name = normalize_upper(row.get("product_name") or row.get("Product Name") or "")
+    tr_order = normalize_upper(row.get("track_order") or row.get("track_order") or "")
+    if not product_name or product_name in {"-", "UNKNOWN", ""}:
+        if tr_order.startswith("PDA"):
+            return "PDA"
+        elif tr_order.startswith("SC"):
+            return "INDIBIZ"
+        elif tr_order.startswith("TIF"):
+            return "VULA"
+        elif tr_order.startswith("AO") or tr_order.startswith("MYIR") or tr_order.startswith("IN"):
+            return "INDIHOME"
+        else:
+            return "UNKNOWN"
+    return product_name
+
+
+def filter_by_date(rows: list[dict[str, str]], start_date: str, end_date: str) -> list[dict[str, str]]:
+    if not start_date and not end_date:
+        return rows
+
+    filtered = []
+    for row in rows:
+        row_date = parse_sheet_date(row.get("Status Date", ""))
+        if start_date and row_date and row_date < start_date:
+            continue
+        if end_date and row_date and row_date > end_date:
+            continue
+        if not row_date and (start_date or end_date):
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def build_summary(all_rows: list[dict[str, str]], total_ps_rows: list[dict[str, str]]) -> dict[str, any]:
+    # Categories for summary breakdown
+    categories = {
+        "ps": [],
+        "potensi": [],
+        "ogp": [],
+        "oke": [],
+        "belum": [],
+        "undispatch": []
+    }
+
+    for row in total_ps_rows:
+        if match_status(row, {"COMPWORK"}):
+            categories["ps"].append(row)
+
+    for row in all_rows:
+        st_up = normalize_upper(row.get("Status"))
+        sm_up = normalize_upper(row.get("status morning"))
+        # Keywords for Potensi (including space variations and typos for robustness)
+        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
+        is_potensi_st = any(v in st_up for v in potensi_keywords)
+        is_setting_sm = "SETTING" in sm_up
+        
+        if is_potensi_st or is_setting_sm:
+            categories["potensi"].append(row)
+        
+        if match_status_morning(row, "SEDANG DIKERJAKAN"):
+            categories["ogp"].append(row)
+        
+        is_wf_sw = match_status(row, {"WORKFAIL", "STARTWORK"})
+        if is_wf_sw:
+            status_m = normalize_upper(row.get("status morning"))
+            tim = normalize_text(row.get("TIM"))
+            
+            if status_m == "OKE TARIK":
+                categories["oke"].append(row)
+            
+            if status_m in {"BELUM DIKERJAKAN", ""} and is_truthy_text(tim) and tim != "-":
+                categories["belum"].append(row)
+            
+            if not is_truthy_text(tim) or tim == "-":
+                categories["undispatch"].append(row)
+
+    def get_breakdown(rows):
+        counter: Counter[str] = Counter()
+        for r in rows:
+            pname = get_product_name_normalized(r)
+            counter[pname] += 1
+        return [{"product": k, "count": v} for k, v in counter.most_common()]
+
+    return {
+        "total_ps": len(categories["ps"]),
+        "total_potensi": len(categories["potensi"]),
+        "sedang_ogp": len(categories["ogp"]),
+        "oke_tarik": len(categories["oke"]),
+        "belum_dikerjakan": len(categories["belum"]),
+        "undispatch": len(categories["undispatch"]),
+        "total_rows": len(all_rows),
+        "ps_breakdown": get_breakdown(categories["ps"]),
+        "potensi_breakdown": get_breakdown(categories["potensi"]),
+        "ogp_breakdown": get_breakdown(categories["ogp"]),
+        "oke_breakdown": get_breakdown(categories["oke"]),
+        "belum_breakdown": get_breakdown(categories["belum"]),
+        "undispatch_breakdown": get_breakdown(categories["undispatch"])
+    }
+
+
+def build_sisa_pivot(all_source_rows: list[dict[str, str]]) -> dict:
+    from collections import defaultdict
+    sisa_rows = []
+    for r in all_source_rows:
+        st_up = normalize_upper(r.get("Status"))
+        sm_up = normalize_upper(r.get("status morning"))
+
+        # Filter: Status in STARTWORK, WORKFAIL
+        if st_up in {"STARTWORK", "WORKFAIL"}:
+            is_sedang = ("SEDANG" in sm_up and "BELUM" not in sm_up)
+            is_belum_or_empty = sm_up in {"", "BELUM DIKERJAKAN"}
+            if is_sedang or is_belum_or_empty:
+                sisa_rows.append(r)
+
+    all_products = set()
+    pivot_matrix = defaultdict(lambda: defaultdict(Counter))
+
+    for r in sisa_rows:
+        wz = normalize_text(r.get("workzone") or "BELUM ADA")
+        wilsus = normalize_text(r.get("wilsus") or "KOTA")
+        if not wilsus or wilsus == "-":
+            wilsus = "KOTA"
+        pname = get_product_name_normalized(r)
+        all_products.add(pname)
+        pivot_matrix[wz][wilsus][pname] += 1
+
+    sorted_products = sorted(list(all_products))
+    sorted_wz = sorted(pivot_matrix.keys())
+
+    formatted_workzones = []
+    col_totals = Counter()
+
+    for wz in sorted_wz:
+        wz_rows = []
+        wz_totals = Counter()
+        sorted_wilsus = sorted(pivot_matrix[wz].keys())
+
+        for wilsus in sorted_wilsus:
+            counts = pivot_matrix[wz][wilsus]
+            row_tot = sum(counts.values())
+            p_counts = {p: counts[p] for p in sorted_products}
+
+            for p in sorted_products:
+                wz_totals[p] += counts[p]
+                col_totals[p] += counts[p]
+
+            wz_rows.append({
+                "wilsus": wilsus,
+                "product_counts": p_counts,
+                "row_total": row_tot
+            })
+
+        wz_tot_dict = {p: wz_totals[p] for p in sorted_products}
+        formatted_workzones.append({
+            "workzone": wz,
+            "wilsus_rows": wz_rows,
+            "wz_totals": wz_tot_dict,
+            "wz_grand_total": sum(wz_totals.values())
+        })
+
+    col_totals_dict = {p: col_totals[p] for p in sorted_products}
+
+    return {
+        "products": sorted_products,
+        "workzones": formatted_workzones,
+        "col_totals": col_totals_dict,
+        "grand_total": len(sisa_rows)
+    }
+
+
+def build_hour_chart(rows: list[dict[str, str]], column_name: str) -> dict[str, list]:
+    counter: Counter[str] = Counter()
+    product_counter: Counter[str] = Counter()
+    total_count = 0
+    for row in rows:
+        value = normalize_text(row.get(column_name))
+        if not value:
+            continue
+        counter[value] += 1
+        total_count += 1
+        
+        pname = get_product_name_normalized(row)
+        product_counter[pname] += 1
+
+    def sort_key(item: str) -> tuple[int, str]:
+        try:
+            return (int(item), item)
+        except ValueError:
+            return (999, item)
+
+    labels = sorted(counter.keys(), key=sort_key)
+    values = [counter[label] for label in labels]
+    breakdown = [{"product": k, "count": v} for k, v in product_counter.most_common()]
+    return {"labels": labels, "values": values, "total": total_count, "breakdown": breakdown}
+
+
+def build_table_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    table_rows = []
+    for row in rows:
+        table_rows.append(
+            {
+                "workzone": normalize_text(row.get("workzone")),
+                "tim": normalize_text(row.get("TIM")),
+                "track_order": normalize_text(row.get("track_order")),
+                "workorder": normalize_text(row.get("Workorder")),
+                "odc": normalize_text(row.get("ODC")),
+                "status": normalize_text(row.get("Status")),
+                "status_morning": normalize_text(row.get("status morning")),
+                "catatan": normalize_text(row.get("Catatan")),
+                "jam_re": normalize_text(row.get("Jam re")),
+                "jam_ps": normalize_text(row.get("Jam PS")),
+                "datevalue": parse_sheet_date(row.get("Status Date", "")),
+            }
+        )
+    return table_rows
+
+
+def sync_orders():
+    rows = fetch_sheet_rows()
+    deduped_rows = dedupe_rows(rows)
+    
+    preferred_statuses = {
+        "COMPWORK": 5,
+        "WORKFAIL": 4,
+        "STARTWORK": 3,
+        "VALCOMP": 2,
+        "ACTCOMP": 1,
+        "VALSTART": 0,
+    }
+
+    synced_count = 0
+    # Fetch existing to handle upsert quickly
+    all_db_orders = Order.query.all()
+    existing_orders = {o.track_order: o for o in all_db_orders}
+    
+    # Track IDs that are present in the current sheet sync
+    current_sheet_ids = set()
+    
+    for row_dict in deduped_rows:
+        tr_order = normalize_text(row_dict.get("track_order") or row_dict.get("SC Order No/Track ID/CSRM No"))
+        if not tr_order:
+            continue
+
+        existing = existing_orders.get(tr_order)
+        new_status_score = preferred_statuses.get(normalize_upper(row_dict.get("Status")), -1)
+        
+        parsed_date = parse_sheet_date(row_dict.get("Status Date", ""))
+        date_created_val = row_dict.get("Date Created", "")
+        parsed_created_date = parse_sheet_date(date_created_val)
+        date_modified_val = row_dict.get("Date Modified", "")
+        parsed_modified_date = parse_sheet_date(date_modified_val)
+        parsed_tgl_ps = parse_sheet_date(row_dict.get("tgl ps", ""))
+        parsed_dispatch = parse_sheet_date(row_dict.get("DISPATCH", ""))
+
+        if existing:
+            existing_status_score = preferred_statuses.get(normalize_upper(existing.status), -1)
+            # update if new status is higher or equal
+            if new_status_score >= existing_status_score:
+                existing.tim = normalize_text(row_dict.get("TIM") or row_dict.get("tim"))
+                existing.workorder = normalize_text(row_dict.get("Workorder"))
+                existing.odc = normalize_text(row_dict.get("ODC"))
+                existing.status = normalize_text(row_dict.get("Status"))
+                # Robust mapping for status morning
+                existing.status_morning = normalize_text(row_dict.get("status morning") or row_dict.get("Status Morning") or row_dict.get("status_morning"))
+                existing.catatan = normalize_text(row_dict.get("Catatan"))
+                existing.jam_re = normalize_text(row_dict.get("Jam re"))
+                existing.jam_ps = normalize_text(row_dict.get("Jam PS"))
+                existing.status_date_raw = normalize_text(row_dict.get("Status Date"))
+                existing.status_date_parsed = parsed_date
+                existing.date_created_raw = normalize_text(date_created_val)
+                existing.date_created_parsed = parsed_created_date
+                existing.date_modified_raw = normalize_text(date_modified_val)
+                existing.date_modified_parsed = parsed_modified_date
+                existing.crm_order_type = normalize_text(row_dict.get("CRM Order Type"))
+                existing.product_name = normalize_text(row_dict.get("Product Name"))
+                existing.tgl_ps = normalize_text(row_dict.get("tgl ps"))
+                existing.tgl_ps_parsed = parsed_tgl_ps
+                existing.workzone = normalize_text(row_dict.get("Workzone"))
+                existing.dispatch_date = parsed_dispatch
+                existing.kordinat = clean_coordinates(normalize_text(row_dict.get("KORDINAT") or row_dict.get("kordinat")))
+                existing.wilsus = normalize_text(row_dict.get("Wilsus") or row_dict.get("wilsus"))
+                existing.eskal_daman = normalize_text(row_dict.get("Eskal daman") or row_dict.get("eskal_daman"))
+                existing.validasi = normalize_text(row_dict.get("VALIDASI") or row_dict.get("validasi"))
+                existing.jenis_order = normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper()
+        else:
+            new_order = Order(
+                track_order=tr_order,
+                tim=normalize_text(row_dict.get("TIM") or row_dict.get("tim")),
+                workorder=normalize_text(row_dict.get("Workorder")),
+                odc=normalize_text(row_dict.get("ODC")),
+                status=normalize_text(row_dict.get("Status")),
+                # Robust mapping for status morning
+                status_morning=normalize_text(row_dict.get("status morning") or row_dict.get("Status Morning") or row_dict.get("status_morning")),
+                catatan=normalize_text(row_dict.get("Catatan")),
+                jam_re=normalize_text(row_dict.get("Jam re")),
+                jam_ps=normalize_text(row_dict.get("Jam PS")),
+                status_date_raw=normalize_text(row_dict.get("Status Date")),
+                status_date_parsed=parsed_date,
+                date_created_raw=normalize_text(date_created_val),
+                date_created_parsed=parsed_created_date,
+                date_modified_raw=normalize_text(date_modified_val),
+                date_modified_parsed=parsed_modified_date,
+                crm_order_type=normalize_text(row_dict.get("CRM Order Type")),
+                product_name=normalize_text(row_dict.get("Product Name")),
+                tgl_ps=normalize_text(row_dict.get("tgl ps")),
+                tgl_ps_parsed=parsed_tgl_ps,
+                workzone=normalize_text(row_dict.get("Workzone")),
+                dispatch_date=parsed_dispatch,
+                kordinat=clean_coordinates(normalize_text(row_dict.get("KORDINAT") or row_dict.get("kordinat"))),
+                wilsus=normalize_text(row_dict.get("Wilsus") or row_dict.get("wilsus")),
+                eskal_daman=normalize_text(row_dict.get("Eskal daman") or row_dict.get("eskal_daman")),
+                validasi=normalize_text(row_dict.get("VALIDASI") or row_dict.get("validasi")),
+                jenis_order=normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper()
+            )
+            db.session.add(new_order)
+            existing_orders[tr_order] = new_order
+        
+        current_sheet_ids.add(tr_order)
+        synced_count += 1
+        
+    # Identify and delete "ghost" records no longer in the Google Sheet
+    db_ids = set(existing_orders.keys())
+    ids_to_delete = db_ids - current_sheet_ids
+    
+    if ids_to_delete:
+        print(f"Sync: Deleting {len(ids_to_delete)} ghost records not found in Google Sheet.")
+        Order.query.filter(Order.track_order.in_(ids_to_delete)).delete(synchronize_session=False)
+
+    db.session.commit()
+    return synced_count
+
+
+def sync_assurance_tickets() -> int:
+    try:
+        resp = requests.get(ASSURANCE_SHEET_CSV_URL, timeout=30)
+        resp.raise_for_status()
+        content = resp.content.decode('utf-8-sig', errors='replace')
+        
+        rows = list(csv.DictReader(io.StringIO(content)))
+        valid_rows = [r for r in rows if normalize_text(r.get("INCIDENT"))]
+
+
+        existing_tickets = {t.incident: t for t in AssuranceTicket.query.all()}
+        seen_incidents = set()
+        synced_count = 0
+
+        for r in valid_rows:
+            inc = normalize_text(r.get("INCIDENT"))
+            if not inc or inc in seen_incidents:
+                continue
+            seen_incidents.add(inc)
+
+            t = existing_tickets.get(inc)
+            if not t:
+                t = AssuranceTicket(incident=inc)
+                db.session.add(t)
+                existing_tickets[inc] = t
+
+            t.device_name = normalize_text(r.get("DEVICE NAME"))
+            t.service_no = normalize_text(r.get("SERVICE NO"))
+            t.workzone = normalize_text(r.get("WORKZONE"))
+            t.summary = normalize_text(r.get("SUMMARY"))
+            t.customer_segment = normalize_text(r.get("CUSTOMER SEGMENT"))
+            t.reported_date = normalize_text(r.get("REPORTED DATE"))
+            t.customer_type = normalize_text(r.get("CUSTOMER TYPE"))
+            t.guarante_status = normalize_text(r.get("GUARANTE STATUS"))
+            t.description_assignment = normalize_text(r.get("DESCRIPTION ASSIGMENT"))
+            t.booking_date = normalize_text(r.get("BOOKING DATE"))
+            t.hasil_ukur = normalize_text(r.get("HASIL UKUR"))
+            t.redaman = normalize_text(r.get("REDAMAN"))
+            t.ttr = normalize_text(r.get("TTR"))
+            t.flag = normalize_text(r.get("FLAG"))
+            t.tim = normalize_text(r.get("TIM") or r.get("TIM KAWAN"))
+            t.odc_real = normalize_text(r.get("ODC REAL"))
+            t.wilsus = normalize_text(r.get("WILSUS"))
+            t.status_kawan = normalize_text(r.get("STATUS KAWAN"))
+            t.catatan = normalize_text(r.get("CATATAN"))
+            t.jam_manja = normalize_text(r.get("JAM MANJA"))
+            t.tim_insera = normalize_text(r.get("TIM INSERA"))
+            t.tim_kawan = normalize_text(r.get("TIM KAWAN"))
+
+            synced_count += 1
+
+
+        db_incidents = set(existing_tickets.keys())
+        ids_to_delete = db_incidents - seen_incidents
+        if ids_to_delete:
+            AssuranceTicket.query.filter(AssuranceTicket.incident.in_(ids_to_delete)).delete(synchronize_session=False)
+
+        db.session.commit()
+        return synced_count
+    except Exception as e:
+        print(f"Error syncing assurance tickets: {e}")
+        return 0
+
+
+def get_jenis_tiket(r: dict) -> str:
+    summary = normalize_upper(r.get("summary"))
+    cust_type = normalize_upper(r.get("customer_type"))
+    if "SQM" in summary: return "SQM"
+    if "UNSPEC" in summary or "UNSPEK" in summary: return "UNSPEC"
+    if "GAMAS" in summary: return "GAMAS"
+    if "GOLD" in cust_type: return "HVC Gold"
+    if "DIAMOND" in cust_type: return "HVC Diamond"
+    if "PLATINUM" in cust_type: return "HVC Platinum"
+    if "REGULER" in cust_type or "REGULAR" in cust_type: return "REGULER"
+    return "REGULER"
+
+
+def get_is_manja(r: dict) -> str:
+    desc = normalize_upper(r.get("description_assignment"))
+    return "YES" if "CUSTOMER ASSIGN" in desc else "NO"
+
+
+def load_assurance_data(sektor: str = "", wilsus: str = "", jenis_tiket: str = "") -> dict:
+    query = AssuranceTicket.query
+    all_tickets = query.all()
+    rows = [t.to_dict() for t in all_tickets]
+
+    for r in rows:
+        r["jenis_tiket"] = get_jenis_tiket(r)
+        r["is_manja"] = get_is_manja(r)
+
+    all_wilsus = sorted(list(set(normalize_text(t.wilsus) for t in all_tickets if t.wilsus and t.wilsus.strip() != "-")))
+
+    if sektor:
+        sektor_map = {
+            "batulicin": {"BLC", "SER"},
+            "satui": {"STI", "PGT", "KIP"},
+            "kotabaru": {"KPL"}
+        }
+        allowed_wz = sektor_map.get(sektor.lower())
+        if allowed_wz:
+            rows = [r for r in rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+    if wilsus:
+        rows = [r for r in rows if normalize_upper(r.get("wilsus")) == normalize_upper(wilsus)]
+
+    if jenis_tiket:
+        jt_up = normalize_upper(jenis_tiket)
+        if jt_up == "REGULER":
+            rows = [r for r in rows if r["jenis_tiket"] not in {"SQM", "UNSPEC", "UNSPEK"}]
+        elif jt_up == "SQM":
+            rows = [r for r in rows if r["jenis_tiket"] == "SQM" or "SQM" in normalize_upper(r.get("summary"))]
+        elif jt_up == "UNSPEC":
+            rows = [r for r in rows if r["jenis_tiket"] in {"UNSPEC", "UNSPEK"} or "UNSPEC" in normalize_upper(r.get("summary")) or "UNSPEK" in normalize_upper(r.get("summary"))]
+        else:
+            rows = [r for r in rows if normalize_upper(r["jenis_tiket"]) == jt_up]
+
+
+
+    def parse_ttr_val(val_str: str) -> float:
+        if not val_str: return 0.0
+        try:
+            return float(val_str.replace(',', '.').strip())
+        except:
+            return 0.0
+
+    def parse_redaman_val(val_str: str) -> float:
+        if not val_str or val_str.strip() in {"-", ""}: return 0.0
+        try:
+            return float(val_str.replace(',', '.').strip())
+        except:
+            return 0.0
+
+    def is_sqm_or_unspec(summary_str: str) -> bool:
+        s = (summary_str or "").upper()
+        return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
+
+    total_saldo = len(rows)
+
+    # Separate rows by Customer Segment
+    pl_tsel_rows = [r for r in rows if normalize_upper(r.get("customer_segment")) == "PL-TSEL"]
+    rbs_rows = [r for r in rows if normalize_upper(r.get("customer_segment")) == "RBS"]
+
+    rbs_indibiz_count = len(rbs_rows)
+    manja_count = sum(1 for r in rows if "CUSTOMER ASSIGN" in normalize_upper(r.get("description_assignment")))
+    online_redaman_count = sum(1 for r in rows if normalize_upper(r.get("hasil_ukur")) == "ONLINE" and parse_redaman_val(r.get("redaman")) < -24.0)
+
+    # PL-TSEL Specific Metrics (excluding SQM & UNSPEC for HVC GOLD, HVC DIAMOND, HVC PLATINUM, REGULER, OSLA)
+    hvc_gold_count = sum(1 for r in pl_tsel_rows if "GOLD" in normalize_upper(r.get("customer_type")) and not is_sqm_or_unspec(r.get("summary")))
+    hvc_diamond_count = sum(1 for r in pl_tsel_rows if "DIAMOND" in normalize_upper(r.get("customer_type")) and not is_sqm_or_unspec(r.get("summary")))
+    hvc_platinum_count = sum(1 for r in pl_tsel_rows if "PLATINUM" in normalize_upper(r.get("customer_type")) and not is_sqm_or_unspec(r.get("summary")))
+    reguler_count = sum(1 for r in pl_tsel_rows if ("REGULER" in normalize_upper(r.get("customer_type")) or "REGULAR" in normalize_upper(r.get("customer_type"))) and not is_sqm_or_unspec(r.get("summary")))
+    
+    garansi_count = sum(1 for r in pl_tsel_rows if "GARANSI" in normalize_upper(r.get("guarante_status")) or "GUARANTEE" in normalize_upper(r.get("guarante_status")))
+    osla_count = sum(1 for r in pl_tsel_rows if parse_ttr_val(r.get("ttr")) > 12.0 and not is_sqm_or_unspec(r.get("summary")))
+    sqm_count = sum(1 for r in pl_tsel_rows if "SQM" in normalize_upper(r.get("summary")))
+    unspec_count = sum(1 for r in pl_tsel_rows if "UNSPEC" in normalize_upper(r.get("summary")) or "UNSPEK" in normalize_upper(r.get("summary")))
+    gamas_count = sum(1 for r in pl_tsel_rows if "GAMAS" in normalize_upper(r.get("summary")))
+    
+    belum_count = sum(1 for r in pl_tsel_rows if normalize_upper(r.get("status_kawan")) in {"", "BELUM DIKERJAKAN"})
+    undispatch_count = sum(1 for r in pl_tsel_rows if not is_truthy_text(r.get("tim")) or r.get("tim") == "-")
+
+
+    # Pivot per Workzone x Status Pengerjaan (Status Kawan)
+    wz_pivot = {}
+    for r in rows:
+        wz = normalize_text(r.get("workzone") or "KOSONG")
+        sk = normalize_upper(r.get("status_kawan"))
+        if wz not in wz_pivot:
+            wz_pivot[wz] = Counter()
+        
+        if sk == "BELUM DIKERJAKAN":
+            wz_pivot[wz]["belum"] += 1
+        elif sk in {"BERANGKAT", "TIBA", "SEDANG DIKERJAKAN"}:
+            wz_pivot[wz]["proses"] += 1
+        elif sk == "PENDING":
+            wz_pivot[wz]["pending"] += 1
+        else:
+            wz_pivot[wz]["unassigned"] += 1
+
+    formatted_wz_pivot = []
+    tot_belum = tot_proses = tot_pending = tot_unassigned = tot_grand = 0
+    for wz in sorted(wz_pivot.keys()):
+        cnt = wz_pivot[wz]
+        b = cnt["belum"]
+        pr = cnt["proses"]
+        pd = cnt["pending"]
+        u = cnt["unassigned"]
+        t = b + pr + pd + u
+
+        tot_belum += b
+        tot_proses += pr
+        tot_pending += pd
+        tot_unassigned += u
+        tot_grand += t
+
+        formatted_wz_pivot.append({
+            "workzone": wz,
+            "belum": b,
+            "proses": pr,
+            "pending": pd,
+            "unassigned": u,
+            "total": t
+        })
+
+    # Hasil Ukur Distribution
+    hu_counter = Counter()
+    for r in rows:
+        hu = normalize_upper(r.get("hasil_ukur")) or "BELUM DIUKUR"
+        hu_counter[hu] += 1
+
+    # Pivot Workzone & Wilsus x Jenis Tiket (Matching Provisioning Sisa Order Pivot)
+    wz_wilsus_pivot_raw = defaultdict(lambda: defaultdict(Counter))
+    for r in rows:
+        wz = normalize_text(r.get("workzone") or "KOSONG")
+        wilsus = normalize_text(r.get("wilsus") or "-")
+        jenis = r.get("jenis_tiket") or "REGULER"
+        wz_wilsus_pivot_raw[wz][wilsus][jenis] += 1
+
+    formatted_wz_wilsus_pivot = []
+    grand_jenis_totals = Counter()
+
+    for wz in sorted(wz_wilsus_pivot_raw.keys()):
+        wz_subrows = []
+        wz_totals = Counter()
+        for wilsus in sorted(wz_wilsus_pivot_raw[wz].keys()):
+            counts = wz_wilsus_pivot_raw[wz][wilsus]
+            wz_totals.update(counts)
+            grand_jenis_totals.update(counts)
+            wz_subrows.append({
+                "wilsus": wilsus,
+                "counts": dict(counts),
+                "total": sum(counts.values())
+            })
+        
+        formatted_wz_wilsus_pivot.append({
+            "workzone": wz,
+            "subrows": wz_subrows,
+            "wz_totals": dict(wz_totals),
+            "wz_grand_total": sum(wz_totals.values())
+        })
+
+    # Sorted Assurance Matrix tickets (Workzone, Tim, Wilsus, Incident)
+    matrix_tickets = list(rows)
+    matrix_tickets.sort(key=lambda x: (
+        (x.get("workzone") or "KOSONG").lower(),
+        (x.get("tim") or "TANPA TIM").lower(),
+        (x.get("wilsus") or "-").lower(),
+        (x.get("incident") or "").lower()
+    ))
+
+    # Calculate breakdown for Belum Dikerjakan and Undispatch cards
+    belum_rows = [r for r in rows if normalize_upper(r.get("status_kawan")) in {"", "BELUM DIKERJAKAN"}]
+    c_belum = Counter(r["jenis_tiket"] for r in belum_rows)
+    belum_breakdown = [{"jenis": k, "count": v} for k, v in c_belum.most_common()]
+
+    undispatch_rows = [r for r in rows if not r.get("tim") or r.get("tim") == "-"]
+    c_undispatch = Counter(r["jenis_tiket"] for r in undispatch_rows)
+    undispatch_breakdown = [{"jenis": k, "count": v} for k, v in c_undispatch.most_common()]
+
+    return {
+        "total_saldo": total_saldo,
+        "rbs_indibiz_count": rbs_indibiz_count,
+        "manja_count": manja_count,
+        "online_redaman_count": online_redaman_count,
+        "hvc_gold_count": hvc_gold_count,
+        "hvc_diamond_count": hvc_diamond_count,
+        "hvc_platinum_count": hvc_platinum_count,
+        "reguler_count": reguler_count,
+        "garansi_count": garansi_count,
+        "osla_count": osla_count,
+        "sqm_count": sqm_count,
+        "unspec_count": unspec_count,
+        "gamas_count": gamas_count,
+        "belum_count": belum_count,
+        "undispatch_count": undispatch_count,
+        "belum_breakdown": belum_breakdown,
+        "undispatch_breakdown": undispatch_breakdown,
+        "wz_pivot": formatted_wz_pivot,
+        "wz_pivot_totals": {
+            "belum": tot_belum,
+            "proses": tot_proses,
+            "pending": tot_pending,
+            "unassigned": tot_unassigned,
+            "grand_total": tot_grand
+        },
+        "wz_wilsus_pivot": formatted_wz_wilsus_pivot,
+        "grand_jenis_totals": dict(grand_jenis_totals),
+        "hasil_ukur_dist": dict(hu_counter),
+        "tickets": rows,
+        "assurance_matrix": matrix_tickets,
+        "all_wilsus": all_wilsus
+    }
+
+
+
+
+
+
+def load_dashboard_data(start_date: str, end_date: str, sektor: str = "") -> dict:
+    query = Order.query
+    if start_date:
+        query = query.filter(Order.status_date_parsed >= start_date)
+    if end_date:
+        query = query.filter(Order.status_date_parsed <= end_date)
+
+    filtered_db_rows = query.all()
+    filtered_rows = [o.to_dict() for o in filtered_db_rows]
+
+    # Special fetch for matrix (DISPATCH): All rows that might be needed
+    # (either DISPATCH == today OR status_morning is active/pending)
+    all_db_rows = Order.query.all()
+    matrix_source_rows = [o.to_dict() for o in all_db_rows]
+
+    # Determine "Today" context for metrics
+    # Default to current WITA (GMT+8) time
+    now_utc = datetime.now(timezone.utc)
+    now_wita = now_utc + timedelta(hours=8)
+    default_today_wita = now_wita.strftime("%Y-%m-%d")
+
+    # If end_date filter is present, use it as the "today" reference for PS and Ranking
+    today = end_date or default_today_wita
+    today_month = today[:7]
+    
+    today_db_rows = Order.query.filter(Order.status_date_parsed == today).all()
+    today_rows = [o.to_dict() for o in today_db_rows]
+
+    if sektor:
+        sektor_map = {
+            "batulicin": {"BLC", "SER"},
+            "satui": {"STI", "PGT", "KIP"},
+            "kotabaru": {"KPL"}
+        }
+        allowed_wz = sektor_map.get(sektor.lower())
+        if allowed_wz:
+            filtered_rows = [r for r in filtered_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+            today_rows = [r for r in today_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+            matrix_source_rows = [r for r in matrix_source_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+    # ── Matrix + Ranking ──────────────────────────────────────────────────────
+    matrix_rows_flat = []
+    tim_today_counter: Counter = Counter()
+    tim_mtd_counter: Counter = Counter()
+
+    # We group by (Workzone + TIM) to determine if that group has any OGP status
+    team_status_map = {} # (workzone, tim) -> is_ogp
+    
+    for row in matrix_source_rows:
+        tim = normalize_text(row.get("TIM"))
+        wz = normalize_text(row.get("workzone"))
+        status_morning_up = normalize_upper(row.get("status morning"))
+        
+        if not is_truthy_text(tim) or tim == "-":
+            continue
+            
+        key = (wz.lower(), tim.lower())
+        if key not in team_status_map:
+            team_status_map[key] = False
+            
+        if status_morning_up in {"SEDANG DIKERJAKAN", "PROSES SETTING"}:
+            team_status_map[key] = True
+
+    for row in matrix_source_rows:
+        status_up = normalize_upper(row.get("Status"))
+        tim = normalize_text(row.get("TIM"))
+        wz = normalize_text(row.get("workzone"))
+        status_morning_up = normalize_upper(row.get("status morning"))
+        dispatch_date = row.get("dispatch_date")
+
+        is_today = (dispatch_date == today)
+        # Robust check for status variations
+        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
+        is_potensi_st = any(v in status_up for v in potensi_keywords)
+        is_setting_sm = (status_morning_up == "PROSES SETTING")
+        is_potensi = (is_potensi_st or is_setting_sm)
+
+        is_persistent = status_morning_up in {"SEDANG DIKERJAKAN", "PENDING", "MATERIAL/NTE", "PROSES SETTING", "BELUM DIKERJAKAN"}
+
+        if is_today or is_persistent:
+            team_flag = "IDLE"
+            if is_truthy_text(tim) and tim != "-":
+                key = (wz.lower(), tim.lower())
+                if team_status_map.get(key, False):
+                    team_flag = "OGP"
+                    
+            matrix_rows_flat.append({
+                "workzone": wz or "BELUM ADA",
+                "tim": tim or "-",
+                "team_flag": team_flag,
+                "track_order": row.get("track_order", "-"),
+                "odc": row.get("ODC", "-"),
+                "kordinat": row.get("kordinat", ""),
+                "status_morning": row.get("status morning", "BELUM MAPPED"),
+                "catatan": row.get("Catatan", ""),
+                "is_ps_today": (status_up == "COMPWORK" and is_today)
+            })
+
+    for row in today_rows:
+        status_up = normalize_upper(row.get("Status"))
+        tim = normalize_text(row.get("TIM"))
+        if status_up == "COMPWORK" and is_truthy_text(tim) and tim != "-":
+            tim_today_counter[tim] += 1
+
+    mtd_query = Order.query.filter(Order.status_date_parsed.like(f"{today_month}%")).all()
+    mtd_rows = [o.to_dict() for o in mtd_query]
+    if sektor:
+        allowed_wz = sektor_map.get(sektor.lower())
+        if allowed_wz:
+            mtd_rows = [r for r in mtd_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+    for row in mtd_rows:
+        status_up = normalize_upper(row.get("Status"))
+        tim = normalize_text(row.get("TIM"))
+        if status_up == "COMPWORK" and is_truthy_text(tim) and tim != "-":
+            tim_mtd_counter[tim] += 1
+
+    matrix_rows_flat.sort(key=lambda x: (
+        (x["workzone"] or "").lower(),
+        (x["tim"] or "").lower(),
+        (x["track_order"] or "").lower()
+    ))
+
+    top_tim_today = [{"tim": tim, "count": count} for tim, count in tim_today_counter.most_common(5)]
+    top_tim_mtd = [{"tim": tim, "count": count} for tim, count in tim_mtd_counter.most_common(5)]
+
+    # Filter Kendala Need FU
+    all_db_orders = [o.to_dict() for o in Order.query.all()]
+    if sektor:
+        allowed_wz = sektor_map.get(sektor.lower())
+        if allowed_wz:
+            all_db_orders = [r for r in all_db_orders if normalize_upper(r.get("workzone")) in allowed_wz]
+
+    kendala_fu_table = []
+    cek_pending_table = []
+    kendala_pelanggan_table = []
+    kendala_teknik_table = []
+
+    failwa_count = 0
+    undispatch_count = 0
+
+    validasi_pelanggan_sm = {"BATAL", "DOUBLE INPUT", "KENDALA IZIN", "GANTI PAKET", "INDIKASI CABUT PASANG", "RUMAH KOSONG"}
+    validasi_teknik_sm = {"ODP FULL", "ODP JAUH", "KENDALA JALUR/RUTE TARIKAN", "NO ODP (TIDAK ADA ODP)", "LIMITASI ONU", "ODP BELUM GOLIVE", "ODP RUSAK", "INSERT TIANG"}
+
+    for r in all_db_orders:
+        st_up = normalize_upper(r.get("Status"))
+        sm_up = normalize_upper(r.get("status morning"))
+        tim = normalize_text(r.get("TIM"))
+        st_date = r.get("status_date_parsed") or ""
+
+        if st_up in {"WORKFAIL", "STARTWORK"}:
+            if st_up == "STARTWORK" and st_date and st_date < today:
+                failwa_count += 1
+            if not is_truthy_text(tim) or tim == "-":
+                undispatch_count += 1
+
+            if sm_up in validasi_pelanggan_sm:
+                kendala_pelanggan_table.append({
+                    "workorder": r.get("Workorder", "-"),
+                    "track_order": r.get("track_order", "-"),
+                    "product_name": get_product_name_normalized(r),
+                    "odc": r.get("ODC", "-"),
+                    "tim": tim or "-",
+                    "status_morning": r.get("status morning", "-"),
+                    "catatan": r.get("Catatan", "-"),
+                    "validasi": r.get("validasi") or r.get("VALIDASI") or "-"
+                })
+
+            if sm_up in validasi_teknik_sm:
+                kendala_teknik_table.append({
+                    "workorder": r.get("Workorder", "-"),
+                    "track_order": r.get("track_order", "-"),
+                    "product_name": get_product_name_normalized(r),
+                    "odc": r.get("ODC", "-"),
+                    "tim": tim or "-",
+                    "status_morning": r.get("status morning", "-"),
+                    "catatan": r.get("Catatan", "-"),
+                    "validasi": r.get("validasi") or r.get("VALIDASI") or "-"
+                })
+
+            if sm_up in {"PENDING", "PERLU DI FAILWA", "KENDALA TEKNIS", "KENDALA PELANGGAN"}:
+                kendala_fu_table.append({
+                    "workorder": r.get("Workorder", "-"),
+                    "track_order": r.get("track_order", "-"),
+                    "product_name": get_product_name_normalized(r),
+                    "odc": r.get("ODC", "-"),
+                    "tim": tim or "-",
+                    "status_morning": r.get("status morning", "-"),
+                    "catatan": r.get("Catatan", "-"),
+                    "eskal_daman": r.get("eskal_daman") or r.get("Eskal daman") or "-"
+                })
+
+            if "PENDING" in sm_up or st_up == "WORKFAIL":
+                cek_pending_table.append({
+                    "workorder": r.get("Workorder", "-"),
+                    "track_order": r.get("track_order", "-"),
+                    "product_name": get_product_name_normalized(r),
+                    "odc": r.get("ODC", "-"),
+                    "tim": tim or "-",
+                    "status_morning": r.get("status morning", "-"),
+                    "catatan": r.get("Catatan", "-"),
+                    "eskal_daman": r.get("eskal_daman") or r.get("Eskal daman") or "-"
+                })
+
+    query_re = Order.query
+    if start_date:
+        query_re = query_re.filter(Order.date_created_parsed >= start_date)
+    if end_date:
+        query_re = query_re.filter(Order.date_created_parsed <= end_date)
+    else:
+        query_re = query_re.filter(Order.date_created_parsed == today)
+    
+    re_db_rows = query_re.all()
+    re_rows = [o.to_dict() for o in re_db_rows]
+    if sektor:
+        allowed_wz = sektor_map.get(sektor.lower())
+        if allowed_wz:
+            re_rows = [r for r in re_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+    re_rows = [r for r in re_rows if normalize_upper(r.get("Status")) not in {"CNCLWORK", "WAPPR"}]
+
+    kendala_fu_table.sort(key=lambda x: (x.get("tim") or "").lower())
+    cek_pending_table.sort(key=lambda x: (x.get("tim") or "").lower())
+
+    unique_teams_in_matrix = {}
+    for r in matrix_rows_flat:
+        tname = r.get("tim")
+        if tname and tname != "-":
+            unique_teams_in_matrix[tname] = r.get("team_flag")
+            
+    idle_teams_count = sum(1 for flag in unique_teams_in_matrix.values() if flag == "IDLE")
+
+    summary_data = build_summary(matrix_source_rows, today_rows)
+    summary_data["idle_teams_count"] = idle_teams_count
+
+    sisa_pivot_data = build_sisa_pivot(matrix_source_rows)
+
+    detail_potensi_table = []
+
+    for row in filtered_rows:
+        status_up = normalize_upper(row.get("Status"))
+        status_morning_up = normalize_upper(row.get("status morning"))
+
+        if status_up in {"ACTCOMP", "VALSTART"} or status_morning_up == "PROSES SETTING":
+            detail_potensi_table.append({
+                "workorder": row.get("Workorder", "-"),
+                "track_order": row.get("track_order", "-"),
+                "product_name": get_product_name_normalized(row),
+                "odc": row.get("ODC", "-"),
+                "tim": row.get("TIM") or row.get("tim") or "-",
+                "status_morning": row.get("status morning", "-"),
+                "catatan": row.get("Catatan", "-"),
+                "eskal_daman": row.get("eskal_daman") or row.get("Eskal Daman") or row.get("ESKAL DAMAN") or "-",
+                "status": row.get("Status", "-")
+            })
+
+    return {
+        "source": "sqlite_database",
+        "summary": summary_data,
+        "jam_ps_chart": build_hour_chart(jam_ps_source, "Jam PS"),
+        "jam_re_chart": build_hour_chart(re_rows, "Jam re"),
+        "matrix_rows": matrix_rows_flat,
+        "row_count": len(filtered_rows),
+        "today_date": today,
+        "kendala_fu": kendala_fu_table,
+        "cek_pending": cek_pending_table,
+        "kendala_pelanggan": kendala_pelanggan_table,
+        "kendala_teknik": kendala_teknik_table,
+        "detail_potensi": detail_potensi_table,
+        "failwa_count": failwa_count,
+        "undispatch_count": undispatch_count,
+        "top_tim_today": top_tim_today,
+        "top_tim_mtd": top_tim_mtd,
+        "sisa_pivot": sisa_pivot_data
+    }
+
+
+@app.route("/api/assurance/detail")
+def api_assurance_detail():
+    category = request.args.get("category", "")
+    sektor = request.args.get("sektor", "")
+    wilsus = request.args.get("wilsus", "")
+
+    query = AssuranceTicket.query
+    all_tickets = query.all()
+    rows = [t.to_dict() for t in all_tickets]
+
+    for r in rows:
+        r["jenis_tiket"] = get_jenis_tiket(r)
+        r["is_manja"] = get_is_manja(r)
+
+    if sektor:
+
+        sektor_map = {
+            "batulicin": {"BLC", "SER"},
+            "satui": {"STI", "PGT", "KIP"},
+            "kotabaru": {"KPL"}
+        }
+        allowed_wz = sektor_map.get(sektor.lower())
+        if allowed_wz:
+            rows = [r for r in rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+    if wilsus and wilsus.strip() not in {"-", "", "ALL"}:
+        rows = [r for r in rows if normalize_upper(r.get("wilsus")) == normalize_upper(wilsus)]
+
+
+
+    def parse_ttr_val(val_str: str) -> float:
+        if not val_str: return 0.0
+        try:
+            return float(val_str.replace(',', '.').strip())
+        except:
+            return 0.0
+
+    def parse_redaman_val(val_str: str) -> float:
+        if not val_str or val_str.strip() in {"-", ""}: return 0.0
+        try:
+            return float(val_str.replace(',', '.').strip())
+        except:
+            return 0.0
+
+    def is_sqm_or_unspec(summary_str: str) -> bool:
+        s = (summary_str or "").upper()
+        return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
+
+    result = []
+    for r in rows:
+        cust_type = normalize_upper(r.get("customer_type"))
+        cust_seg = normalize_upper(r.get("customer_segment"))
+        summary = normalize_upper(r.get("summary"))
+        garansi_st = normalize_upper(r.get("guarante_status"))
+        sk = normalize_upper(r.get("status_kawan"))
+        tim = normalize_text(r.get("tim"))
+        desc_assign = normalize_upper(r.get("description_assignment"))
+        hasil_uk = normalize_upper(r.get("hasil_ukur"))
+        redaman_val = parse_redaman_val(r.get("redaman"))
+        ttr_val = parse_ttr_val(r.get("ttr"))
+
+        is_pl_tsel = (cust_seg == "PL-TSEL")
+
+        if category == "assurance_saldo":
+            result.append(r)
+        elif category == "rbs_indibiz":
+            if cust_seg == "RBS": result.append(r)
+        elif category == "tik_manja":
+            if "CUSTOMER ASSIGN" in desc_assign: result.append(r)
+        elif category == "online_redaman":
+            if hasil_uk == "ONLINE" and redaman_val < -24.0: result.append(r)
+        elif category == "hvc_gold":
+            if is_pl_tsel and "GOLD" in cust_type and not is_sqm_or_unspec(summary): result.append(r)
+        elif category == "hvc_diamond":
+            if is_pl_tsel and "DIAMOND" in cust_type and not is_sqm_or_unspec(summary): result.append(r)
+        elif category == "hvc_platinum":
+            if is_pl_tsel and "PLATINUM" in cust_type and not is_sqm_or_unspec(summary): result.append(r)
+        elif category == "reguler":
+            if is_pl_tsel and ("REGULER" in cust_type or "REGULAR" in cust_type) and not is_sqm_or_unspec(summary): result.append(r)
+        elif category == "garansi":
+            if is_pl_tsel and ("GARANSI" in garansi_st or "GUARANTEE" in garansi_st): result.append(r)
+        elif category == "osla":
+            if is_pl_tsel and ttr_val > 12.0 and not is_sqm_or_unspec(summary): result.append(r)
+        elif category == "sqm":
+            if is_pl_tsel and "SQM" in summary: result.append(r)
+        elif category == "unspec":
+            if is_pl_tsel and ("UNSPEC" in summary or "UNSPEK" in summary): result.append(r)
+        elif category == "gamas":
+            if is_pl_tsel and "GAMAS" in summary: result.append(r)
+        elif category == "assurance_belum_dikerjakan":
+            if is_pl_tsel and sk in {"", "BELUM DIKERJAKAN"}: result.append(r)
+        elif category == "assurance_undispatch":
+            if is_pl_tsel and (not tim or tim == "-"): result.append(r)
+        elif category == "pivot_cell":
+            wz_req = request.args.get("workzone", "")
+            wil_req = request.args.get("wilsus", "")
+            jen_req = request.args.get("jenis", "")
+
+            matched = True
+            if wz_req and wz_req.strip() not in {"-", "", "ALL", "GRAND TOTAL"} and normalize_upper(r.get("workzone")) != normalize_upper(wz_req):
+                matched = False
+            if wil_req and wil_req.strip() not in {"-", "", "ALL"} and normalize_upper(r.get("wilsus")) != normalize_upper(wil_req):
+                matched = False
+            if jen_req and jen_req.strip() not in {"TOTAL", "GRAND TOTAL", ""}:
+                jt = normalize_upper(r.get("jenis_tiket"))
+                jr = normalize_upper(jen_req)
+                if "HVC DIAMOND" in jr or "PLATINUM" in jr:
+                    if jt not in {"HVC DIAMOND", "HVC PLATINUM"}:
+                        matched = False
+                elif jt != jr:
+                    matched = False
+            if matched:
+                result.append(r)
+
+
+
+    detail_rows = []
+    for r in result:
+        detail_rows.append({
+            "incident": r.get("incident", "-"),
+            "odc_real": r.get("odc_clean") or r.get("odc_real") or "-",
+            "service_no": r.get("service_no", "-"),
+            "customer_segment": r.get("customer_segment", "-"),
+            "reported_date": r.get("reported_date", "-"),
+            "customer_type": r.get("customer_type", "-"),
+            "hasil_ukur": r.get("hasil_ukur", "-"),
+            "redaman": r.get("redaman", "-"),
+            "ttr": r.get("ttr", "-"),
+            "flag": r.get("flag", "-"),
+            "tim": r.get("tim") or "-",
+            "wilsus": r.get("wilsus", "-"),
+            "status_kawan": r.get("status_kawan") or "EMPTY",
+            "catatan": r.get("catatan") or "-",
+            "jam_manja": r.get("jam_manja") or "-",
+            "summary": r.get("summary") or "-"
+        })
+
+    return jsonify({"success": True, "data": detail_rows})
+
+
+
+
+
+def load_dashboard_data(start_date: str, end_date: str, sektor: str = "", jenis_order: str = "") -> dict:
+    query = Order.query
+    if start_date:
+        query = query.filter(Order.status_date_parsed >= start_date)
+    if end_date:
+        query = query.filter(Order.status_date_parsed <= end_date)
+    if jenis_order:
+        query = query.filter(db.func.upper(Order.jenis_order) == jenis_order.upper())
+
+    filtered_db_rows = query.all()
+    filtered_rows = [o.to_dict() for o in filtered_db_rows]
+
+    # Special fetch for matrix (DISPATCH): All rows that might be needed
+    # (either DISPATCH == today OR status_morning is active/pending)
+    all_db_rows = Order.query.all()
+    matrix_source_rows = [o.to_dict() for o in all_db_rows]
+    if jenis_order:
+        matrix_source_rows = [r for r in matrix_source_rows if normalize_upper(r.get("jenis_order")) == jenis_order.upper()]
+
+    # Determine "Today" context for metrics
+    # Default to current WITA (GMT+8) time
+    now_utc = datetime.now(timezone.utc)
+    now_wita = now_utc + timedelta(hours=8)
+    default_today_wita = now_wita.strftime("%Y-%m-%d")
+
+    # If end_date filter is present, use it; otherwise fallback to max date in DB if today has 0 rows
+    if end_date:
+        today = end_date
+    else:
+        has_today = Order.query.filter(Order.status_date_parsed == default_today_wita).first()
+        if not has_today:
+            max_d = db.session.query(db.func.max(Order.status_date_parsed)).scalar()
+            today = max_d or default_today_wita
+        else:
+            today = default_today_wita
+
+    today_month = today[:7]
+    
+    today_db_rows = Order.query.filter(Order.status_date_parsed == today).all()
+    today_rows = [o.to_dict() for o in today_db_rows]
+
+    allowed_wz = None
+    if sektor:
+        sektor_map = {
+            "batulicin": {"BLC", "SER"},
+            "satui": {"STI", "PGT", "KIP"},
+            "kotabaru": {"KPL"}
+        }
+        allowed_wz = sektor_map.get(sektor.lower())
+        if allowed_wz:
+            filtered_rows = [r for r in filtered_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+            today_rows = [r for r in today_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+            matrix_source_rows = [r for r in matrix_source_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+    # ── Matrix + Ranking ──────────────────────────────────────────────────────
+    matrix_rows_flat = []
+    tim_today_counter: Counter = Counter()
+    tim_mtd_counter: Counter = Counter()
+
+    # We group by (Workzone + TIM) to determine if that group has any OGP status
+    team_status_map = {} # (workzone, tim) -> is_ogp
+    
+    for row in matrix_source_rows:
+        tim = normalize_text(row.get("TIM"))
+        wz = normalize_text(row.get("workzone"))
+        status_morning_up = normalize_upper(row.get("status morning"))
+        
+        if not is_truthy_text(tim) or tim == "-":
+            continue
+            
+        key = (wz.lower(), tim.lower())
+        if key not in team_status_map:
+            team_status_map[key] = False
+            
+        if status_morning_up in {"SEDANG DIKERJAKAN", "PROSES SETTING"}:
+            team_status_map[key] = True
+
+    for row in matrix_source_rows:
+        status_up = normalize_upper(row.get("Status"))
+        tim = normalize_text(row.get("TIM"))
+        wz = normalize_text(row.get("workzone"))
+        status_morning_up = normalize_upper(row.get("status morning"))
+        dispatch_date = row.get("dispatch_date")
+
+        is_today = (dispatch_date == today)
+        # Robust check for status variations
+        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
+        is_potensi_st = any(v in status_up for v in potensi_keywords)
+        is_setting_sm = "SETTING" in status_morning_up
+        is_potensi = is_potensi_st or is_setting_sm
+
+        # 1. Skip WAPPR only if it's NOT a Potensi row (Potensi are usually WAPPR initially)
+        if status_up == "WAPPR" and not is_potensi:
+            continue
+            
+        if not is_truthy_text(tim) or tim == "-":
+            continue
+            
+        is_persistent = (status_morning_up in {
+            "SEDANG DIKERJAKAN", "BELUM DIKERJAKAN", "", 
+            "MATERIAL/NTE", "MATERIAL / NTE", "PENDING", "PROSES SETTING"
+        } or is_potensi)
+        
+        if not is_today and not is_persistent:
+            continue
+            
+        # Keep current COMPWORK today logic
+        if status_up == "COMPWORK" and row.get("tgl_ps_parsed") != today:
+            continue
+
+        is_ps_today = (status_up == "COMPWORK" and row.get("tgl_ps_parsed") == today)
+        status_morning_up = normalize_upper(row.get("status morning"))
+
+        if status_up == "COMPWORK":
+            color_class = "success"
+        elif "SETTING" in status_morning_up:
+            color_class = "primary"
+        elif "SEDANG DIKERJAKAN" in status_morning_up:
+            color_class = "warning"
+        elif status_morning_up == "OKE TARIK":
+            color_class = "info"
+        elif status_morning_up in {"BELUM DIKERJAKAN", ""}:
+            color_class = "secondary"
+        else:
+            color_class = "danger"
+
+        # Determine team flag (OGP/IDLE) for grouping indicators
+        key = (wz.lower(), tim.lower())
+        is_p_ogp = team_status_map.get(key, False)
+        team_flag = "OGP" if is_p_ogp else "IDLE"
+
+        # Determine special badges (Robust matching for data variations)
+        status_m_up = normalize_upper(row.get("status morning"))
+        is_ogp_status = ("SEDANG" in status_m_up or "SETTING" in status_m_up)
+        is_hr = ("HR" in status_m_up)
+        is_issue = any(kw in status_m_up for kw in {"KENDALA", "RUSAK", "IZIN", "ALAMAT", "FAILWA", "KENDALA"})
+        is_no_update = (status_m_up in {"", "-", "KOSONG"} or "BELUM" in status_m_up)
+
+        matrix_rows_flat.append({
+            "tim": tim,
+            "workzone": wz,
+            "track_order": normalize_text(row.get("track_order")),
+            "odc": normalize_text(row.get("ODC")),
+            "kordinat": normalize_text(row.get("kordinat") or row.get("KORDINAT")),
+            "status": status_up,
+            "status_morning": normalize_text(row.get("status morning")),
+            "catatan": normalize_text(row.get("Catatan")),
+            "product_name": row.get("product_name") or row.get("Product Name") or "-",
+            "color_class": color_class,
+            "is_ps_today": is_ps_today,
+            "is_ogp_status": is_ogp_status,
+            "is_hr": is_hr,
+            "is_issue": is_issue,
+            "is_no_update": is_no_update,
+            "team_flag": team_flag
+        })
+
+    query_compwork = Order.query.filter(db.func.upper(Order.status) == "COMPWORK")
+    if sektor:
+        sektor_map = {
+            "batulicin": {"BLC", "SER"},
+            "satui": {"STI", "PGT", "KIP"},
+            "kotabaru": {"KPL"}
+        }
+        allowed_wz = sektor_map.get(sektor.lower())
+        if allowed_wz:
+            query_compwork = query_compwork.filter(Order.workzone.in_(allowed_wz))
+
+    all_compwork_rows = [o.to_dict() for o in query_compwork.all()]
+
+    for row in all_compwork_rows:
+        tim = normalize_text(row.get("TIM") or row.get("tim"))
+        if not is_truthy_text(tim) or tim == "-":
+            continue
+        # Priority: tgl_ps_parsed -> date_modified_parsed -> status_date_parsed
+        ps_date = (
+            row.get("tgl_ps_parsed") or
+            row.get("date_modified_parsed") or
+            row.get("status_date_parsed") or
+            ""
+        )
+        if ps_date == today:
+            tim_today_counter[tim] += 1
+        if ps_date.startswith(today_month):
+            tim_mtd_counter[tim] += 1
+
+    top_tim_today = [{"tim": k, "count": v} for k, v in tim_today_counter.most_common(5)]
+    top_tim_mtd = [{"tim": k, "count": v} for k, v in tim_mtd_counter.most_common(5)]
+    
+    # Sort matrix flat list per workzone, then tim, then odc
+    matrix_rows_flat.sort(key=lambda x: (
+        (x["workzone"] or "").lower(),
+        (x["tim"] or "").lower(),
+        (x["odc"] or "").lower()
+    ))
+    matrix_rows = matrix_rows_flat
+
+    # ── Kendala Tables ────────────────────────────────────────────────────────
+    kendala_pelanggan_table = []
+    kendala_teknik_table = []
+    kendala_fu_table = []
+    cek_pending_table = []
+
+    pelanggan_keywords = {
+        "BATAL", "DOUBLE INPUT", "KENDALA IZIN", "GANTI PAKET", 
+        "INDIKASI CABUT PASANG", "RUMAH KOSONG"
+    }
+
+    teknik_keywords = {
+        "ODP FULL", "ODP JAUH", "KENDALA JALUR/RUTE TARIKAN", "KENDALA JALUR", "RUTE TARIKAN",
+        "NO ODP", "LIMITASI ONU", "ODP BELUM GOLIVE", "ODP RUSAK", "INSERT TIANG"
+    }
+
+    for row in filtered_rows:
+        status_up = normalize_upper(row.get("Status"))
+        status_morning_up = normalize_upper(row.get("status morning"))
+
+        if status_up in {"WORKFAIL", "STARTWORK"}:
+            if status_morning_up in {"INSERT TIANG", "ODP RUSAK"}:
+                kendala_fu_table.append({
+                    "tim": row.get("TIM") or "-",
+                    "track_order": row.get("track_order", "-"),
+                    "status_morning": row.get("status morning", "-"),
+                    "catatan": row.get("Catatan", "-")
+                })
+            if status_morning_up in {"PENDING", "OKE TARIK", "MATERIAL/NTE", "MATERIAL / NTE"}:
+                cek_pending_table.append({
+                    "tim": row.get("TIM") or "-",
+                    "track_order": row.get("track_order", "-"),
+                    "status_morning": row.get("status morning", "-"),
+                    "catatan": row.get("Catatan", "-")
+                })
+            if any(kw in status_morning_up for kw in pelanggan_keywords):
+                kendala_pelanggan_table.append({
+                    "workorder": row.get("Workorder", "-"),
+                    "track_order": row.get("track_order", "-"),
+                    "status_morning": row.get("status morning", "-"),
+                    "catatan": row.get("Catatan", "-"),
+                    "validasi": row.get("validasi") or row.get("VALIDASI") or "-",
+                    "status": row.get("Status", "-")
+                })
+            if any(kw in status_morning_up for kw in teknik_keywords):
+                kendala_teknik_table.append({
+                    "workorder": row.get("Workorder", "-"),
+                    "track_order": row.get("track_order", "-"),
+                    "status_morning": row.get("status morning", "-"),
+                    "catatan": row.get("Catatan", "-"),
+                    "validasi": row.get("validasi") or row.get("VALIDASI") or "-",
+                    "status": row.get("Status", "-")
+                })
+
+    def is_valid_failwa_status(sm_str: str) -> bool:
+        if not sm_str: return False
+        s = sm_str.strip().upper()
+        if not s or s in {"-", "NONE", "EMPTY", "BELUM DIKERJAKAN", "SEDANG DIKERJAKAN", "OK TARIK", "OKE TARIK"}:
+            return False
+        return True
+
+    failwa_count = sum(
+        1 for o in all_db_rows
+        if normalize_upper(o.status) == "STARTWORK"
+        and is_valid_failwa_status(o.status_morning)
+    )
+
+
+
+
+
+    # Undispatch (untuk floating widget)
+    undispatch_count = sum(
+        1 for r in filtered_rows
+        if normalize_upper(r.get("Status")) in {"WORKFAIL", "STARTWORK"}
+        and not is_truthy_text(r.get("TIM", ""))
+    )
+
+    # Build ps_today_rows:
+    # PS hari ini = COMPWORK dengan tgl_ps_parsed = today
+    # Fallback: Date Modified = today, lalu Status Date = today
+    ps_today_rows = []
+    for r in matrix_source_rows:
+        # Priority: tgl_ps_parsed -> date_modified_parsed -> status_date_parsed
+        ps_date = (
+            r.get("tgl_ps_parsed") or
+            r.get("date_modified_parsed") or
+            r.get("status_date_parsed") or
+            ""
+        )
+        if start_date and ps_date < start_date: continue
+        if end_date and ps_date > end_date: continue
+        if not start_date and not end_date and ps_date != today: continue
+        if allowed_wz and normalize_upper(r.get("workzone")) not in allowed_wz: continue
+        ps_today_rows.append(r)
+
+    # Jam PS Chart -> COMPWORK with tgl_ps / date_modified = today
+    jam_ps_source = [r for r in ps_today_rows if normalize_upper(r.get("Status")) == "COMPWORK"]
+        
+    # Jam RE Chart -> Date Created
+    query_re = Order.query
+    if start_date:
+        query_re = query_re.filter(Order.date_created_parsed >= start_date)
+    if end_date:
+        query_re = query_re.filter(Order.date_created_parsed <= end_date)
+    if not start_date and not end_date:
+        query_re = query_re.filter(Order.date_created_parsed == today)
+    
+    re_db_rows = query_re.all()
+    re_rows = [o.to_dict() for o in re_db_rows]
+    if sektor:
+        allowed_wz = {
+            "batulicin": {"BLC", "SER"},
+            "satui": {"STI", "PGT", "KIP"},
+            "kotabaru": {"KPL"}
+        }.get(sektor.lower())
+        if allowed_wz:
+            re_rows = [r for r in re_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+    # Exclude CNCLWORK and WAPPR from Jam RE
+    re_rows = [r for r in re_rows if normalize_upper(r.get("Status")) not in {"CNCLWORK", "WAPPR"}]
+
+    # Sort per Tim
+    kendala_fu_table.sort(key=lambda x: (x.get("tim") or "").lower())
+    cek_pending_table.sort(key=lambda x: (x.get("tim") or "").lower())
+
+    # Count IDLE teams only from those currently in the Matrix (Today's teams)
+    unique_teams_in_matrix = {} # tim -> team_flag
+    for r in matrix_rows:
+        tname = r.get("tim")
+        if tname and tname != "-":
+            unique_teams_in_matrix[tname] = r.get("team_flag")
+            
+    idle_teams_count = sum(1 for flag in unique_teams_in_matrix.values() if flag == "IDLE")
+
+    # For the summary cards at the top, we use the global snapshot (matrix_source_rows)
+    # so that metrics like "TOTAL POTENSI" show everything, not just today's updates.
+    summary_data = build_summary(matrix_source_rows, ps_today_rows)
+    summary_data["idle_teams_count"] = idle_teams_count
+
+    sisa_pivot_data = build_sisa_pivot(matrix_source_rows)
+
+    detail_potensi_table = []
+
+    for row in filtered_rows:
+        status_up = normalize_upper(row.get("Status"))
+        status_morning_up = normalize_upper(row.get("status morning"))
+
+        if status_up in {"ACTCOMP", "VALSTART"} or status_morning_up == "PROSES SETTING":
+            detail_potensi_table.append({
+                "workorder": row.get("Workorder", "-"),
+                "track_order": row.get("track_order", "-"),
+                "product_name": get_product_name_normalized(row),
+                "odc": row.get("ODC", "-"),
+                "tim": row.get("TIM") or row.get("tim") or "-",
+                "status_morning": row.get("status morning", "-"),
+                "catatan": row.get("Catatan", "-"),
+                "eskal_daman": row.get("eskal_daman") or row.get("Eskal Daman") or row.get("ESKAL DAMAN") or "-",
+                "status": row.get("Status", "-")
+            })
+
+    return {
+        "source": "sqlite_database",
+        "summary": summary_data,
+        "jam_ps_chart": build_hour_chart(jam_ps_source, "Jam PS"),
+        "jam_re_chart": build_hour_chart(re_rows, "Jam re"),
+        "matrix_rows": matrix_rows,
+        "row_count": len(filtered_rows),
+        "today_date": today,
+        "kendala_fu": kendala_fu_table,
+        "cek_pending": cek_pending_table,
+        "kendala_pelanggan": kendala_pelanggan_table,
+        "kendala_teknik": kendala_teknik_table,
+        "detail_potensi": detail_potensi_table,
+        "failwa_count": failwa_count,
+        "undispatch_count": undispatch_count,
+        "top_tim_today": top_tim_today,
+        "top_tim_mtd": top_tim_mtd,
+        "sisa_pivot": sisa_pivot_data
+    }
+
+
+@app.route("/")
+def index():
+    filters = {
+        "start_date": request.args.get("start_date", ""),
+        "end_date": request.args.get("end_date", ""),
+        "sektor": request.args.get("sektor", ""),
+        "wilsus": request.args.get("wilsus", ""),
+        "jenis_tiket": request.args.get("jenis_tiket", ""),
+        "jenis_order": request.args.get("jenis_order", "").upper(),
+        "active_tab": request.args.get("active_tab", "pane-summary")
+    }
+    dashboard_data = load_dashboard_data(filters["start_date"], filters["end_date"], filters["sektor"], filters["jenis_order"])
+    assurance_data = load_assurance_data(filters["sektor"], filters["wilsus"], filters["jenis_tiket"])
+
+
+    return render_template(
+        "dashboard_order.html",
+        filters=filters,
+        data_source=dashboard_data["source"],
+        summary=dashboard_data["summary"],
+        jam_ps_chart=dashboard_data["jam_ps_chart"],
+        jam_re_chart=dashboard_data["jam_re_chart"],
+        matrix_rows=dashboard_data["matrix_rows"],
+        row_count=dashboard_data["row_count"],
+        today_date=dashboard_data["today_date"],
+        kendala_fu=dashboard_data["kendala_fu"],
+        cek_pending=dashboard_data["cek_pending"],
+        kendala_pelanggan=dashboard_data["kendala_pelanggan"],
+        kendala_teknik=dashboard_data["kendala_teknik"],
+        detail_potensi=dashboard_data["detail_potensi"],
+        failwa_count=dashboard_data["failwa_count"],
+        undispatch_count=dashboard_data["undispatch_count"],
+        top_tim_today=dashboard_data["top_tim_today"],
+        top_tim_mtd=dashboard_data["top_tim_mtd"],
+        sisa_pivot=dashboard_data["sisa_pivot"],
+        assurance=assurance_data
+    )
+
+
+last_sync_time = datetime.now()
+
+@app.route("/api/dashboard/order")
+def api_dashboard_order():
+    global last_sync_time
+    # Automatic Sync Check (if last sync > 15 minutes)
+    if (datetime.now() - last_sync_time) > timedelta(minutes=15):
+        try:
+            sync_orders()
+            sync_assurance_tickets()
+            last_sync_time = datetime.now()
+            print("Auto-sync completed successfully.")
+        except Exception as e:
+            print(f"Auto-sync failed: {str(e)}")
+
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+    sektor = request.args.get("sektor", "")
+    return jsonify(load_dashboard_data(start_date, end_date, sektor))
+
+
+@app.route("/api/dashboard/detail")
+def api_dashboard_detail():
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+    category = request.args.get("category", "")
+    sektor = request.args.get("sektor", "")
+
+    query = Order.query
+    if start_date:
+        query = query.filter(Order.status_date_parsed >= start_date)
+    if end_date:
+        query = query.filter(Order.status_date_parsed <= end_date)
+
+    filtered_db_rows = query.all()
+    filtered_rows = [o.to_dict() for o in filtered_db_rows]
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    today_db_rows = Order.query.filter(Order.status_date_parsed == today).all()
+    today_rows = [o.to_dict() for o in today_db_rows]
+
+    allowed_wz = None
+    if sektor:
+        sektor_map = {
+            "batulicin": {"BLC", "SER"},
+            "satui": {"STI", "PGT", "KIP"},
+            "kotabaru": {"KPL"}
+        }
+        allowed_wz = sektor_map.get(sektor.lower())
+        if allowed_wz:
+            filtered_rows = [r for r in filtered_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+            today_rows = [r for r in today_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+    result = []
+    if category == "total_ps":
+        # PS hari ini: COMPWORK dengan tgl_ps_parsed = today (fallback: date_modified, status_date)
+        all_db_rows = Order.query.all()
+        all_rows = [o.to_dict() for o in all_db_rows]
+        if allowed_wz:
+            all_rows = [r for r in all_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+        
+        ps_today_rows = []
+        for r in all_rows:
+            ps_date = (
+                r.get("tgl_ps_parsed") or
+                r.get("date_modified_parsed") or
+                r.get("status_date_parsed") or
+                ""
+            )
+            if start_date and ps_date < start_date: continue
+            if end_date and ps_date > end_date: continue
+            if not start_date and not end_date and ps_date != today: continue
+            ps_today_rows.append(r)
+            
+        result = [r for r in ps_today_rows if normalize_upper(r.get("Status")) == "COMPWORK"]
+    elif category == "total_potensi":
+        result = []
+        for r in filtered_rows:
+            st_up = normalize_upper(r.get("Status"))
+            sm_up = normalize_upper(r.get("status morning"))
+            potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
+            if any(v in st_up for v in potensi_keywords) or "SETTING" in sm_up:
+                result.append(r)
+    elif category == "sedang_ogp":
+        result = [r for r in filtered_rows if normalize_upper(r.get("status morning")) == "SEDANG DIKERJAKAN"]
+    elif category == "oke_tarik":
+        result = [r for r in filtered_rows if normalize_upper(r.get("Status")) in {"WORKFAIL", "STARTWORK"} and normalize_upper(r.get("status morning")) == "OKE TARIK"]
+    elif category == "belum_dikerjakan":
+        result = [
+            r for r in filtered_rows
+            if normalize_upper(r.get("Status")) in {"WORKFAIL", "STARTWORK"}
+            and normalize_upper(r.get("status morning")) in {"BELUM DIKERJAKAN", ""}
+            and is_truthy_text(r.get("TIM"))
+            and str(r.get("TIM")).strip() != "-"
+        ]
+    elif category == "undispatch":
+        result = [r for r in filtered_rows if normalize_upper(r.get("Status")) in {"WORKFAIL", "STARTWORK"} and not is_truthy_text(r.get("TIM", ""))]
+    elif category == "idle_teams":
+        # Logic to identify IDLE teams from Matrix source
+        now_utc = datetime.now(timezone.utc)
+        now_wita = now_utc + timedelta(hours=8)
+        today_wita = now_wita.strftime("%Y-%m-%d")
+        persistent_statuses = {"SEDANG DIKERJAKAN", "PENDING", "MATERIAL/NTE", "PROSES SETTING", "BELUM DIKERJAKAN"}
+
+        all_rows_list = [o.to_dict() for o in Order.query.all()]
+        if sektor:
+            sektor_map = {"batulicin": {"BLC", "SER"}, "satui": {"STI", "PGT", "KIP"}, "kotabaru": {"KPL"}}
+            allowed_wz = sektor_map.get(sektor.lower(), set())
+            all_rows_list = [r for r in all_rows_list if normalize_upper(r.get("workzone")) in allowed_wz]
+
+        matrix_rows_source = []
+        for r in all_rows_list:
+            is_today = r.get("dispatch_date") == today_wita
+            is_persistent = normalize_upper(r.get("status morning")) in persistent_statuses
+            if is_today or is_persistent:
+                matrix_rows_source.append(r)
+
+        team_status_map = {}
+        for r in matrix_rows_source:
+            tim = normalize_text(r.get("TIM"))
+            if not is_truthy_text(tim) or tim == "-": continue
+            status_m_up = normalize_upper(r.get("status morning"))
+            if tim.lower() not in team_status_map: team_status_map[tim.lower()] = False
+            if status_m_up in {"SEDANG DIKERJAKAN", "PROSES SETTING"}:
+                team_status_map[tim.lower()] = True
+        
+        idle_teams = sorted(list({t for t, is_ogp in team_status_map.items() if not is_ogp}))
+        return jsonify({"success": True, "data": [{"tim": t.upper()} for t in idle_teams]})
+    elif category == "perlu_failwa":
+        source_rows = filtered_rows if (start_date or end_date) else [o.to_dict() for o in Order.query.all()]
+        if sektor:
+            sektor_map = {"batulicin": {"BLC", "SER"}, "satui": {"STI", "PGT", "KIP"}, "kotabaru": {"KPL"}}
+            allowed_wz = sektor_map.get(sektor.lower(), set())
+            source_rows = [r for r in source_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+        def is_valid_failwa_sm(sm_str: str) -> bool:
+            if not sm_str: return False
+            s = sm_str.strip().upper()
+            if not s or s in {"-", "NONE", "EMPTY", "BELUM DIKERJAKAN", "SEDANG DIKERJAKAN", "OK TARIK", "OKE TARIK"}:
+                return False
+            return True
+
+        result = [
+            r for r in source_rows
+            if normalize_upper(r.get("Status")) == "STARTWORK"
+            and is_valid_failwa_sm(r.get("status morning"))
+        ]
+
+
+    elif category == "pivot_cell":
+        wz_req = request.args.get("workzone", "")
+        wil_req = request.args.get("wilsus", "")
+        jen_req = request.args.get("jenis", "")
+
+        source_rows = [o.to_dict() for o in Order.query.all()]
+        if sektor:
+            sektor_map = {"batulicin": {"BLC", "SER"}, "satui": {"STI", "PGT", "KIP"}, "kotabaru": {"KPL"}}
+            allowed_wz = sektor_map.get(sektor.lower(), set())
+            source_rows = [r for r in source_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+        result = []
+        for r in source_rows:
+            st_up = normalize_upper(r.get("Status"))
+            sm_up = normalize_upper(r.get("status morning"))
+            if st_up in {"STARTWORK", "WORKFAIL"}:
+                is_sedang = ("SEDANG" in sm_up and "BELUM" not in sm_up)
+                is_belum_or_empty = sm_up in {"", "BELUM DIKERJAKAN"}
+                if not (is_sedang or is_belum_or_empty):
+                    continue
+            else:
+                continue
+
+            if wz_req and wz_req.strip() not in {"-", "", "ALL", "GRAND TOTAL"} and normalize_upper(r.get("workzone")) != normalize_upper(wz_req):
+                continue
+            if wil_req and wil_req.strip() not in {"-", "", "ALL"} and normalize_upper(r.get("wilsus")) != normalize_upper(wil_req):
+                continue
+            if jen_req and jen_req.strip() not in {"TOTAL", "GRAND TOTAL", ""}:
+                pname = get_product_name_normalized(r)
+                if normalize_upper(pname) != normalize_upper(jen_req):
+                    continue
+            result.append(r)
+
+    else:
+        result = []
+
+
+    detail_rows = []
+    for r in result:
+        # Fallback if product_name is "-" or empty
+        pname = r.get("product_name")
+        if not pname or pname == "-":
+            pname = get_product_name_normalized(r)
+            
+        detail_rows.append({
+            "status": r.get("Status", "-"),
+            "track_order": r.get("track_order", "-"),
+            "workorder": r.get("Workorder", "-"),
+            "product_name": pname,
+            "odc": r.get("ODC", "-"),
+            "tim": r.get("TIM", "-"),
+            "status_morning": r.get("status morning") or "EMPTY",
+            "catatan": r.get("Catatan", "-"),
+            "eskal_daman": r.get("eskal_daman") or r.get("Eskal daman") or "-"
+        })
+
+    return jsonify({"success": True, "data": detail_rows})
+
+
+
+
+@app.route("/api/sync", methods=["POST"])
+def api_sync():
+    try:
+        c1 = sync_orders()
+        c2 = sync_assurance_tickets()
+        return jsonify({"success": True, "message": f"Berhasil sinkronisasi {c1} data Provisioning & {c2} data Assurance"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+with app.app_context():
+    db.create_all()
+
+if __name__ == "__main__":
+    with app.app_context():
+        if Order.query.first() is None:
+            print("Database Provisioning kosong, melakukan sinkronisasi awal...")
+            sync_orders()
+        if AssuranceTicket.query.first() is None:
+            print("Database Assurance kosong, melakukan sinkronisasi awal...")
+            sync_assurance_tickets()
+        print("Sinkronisasi database selesai.")
+    app.run(debug=True, host="0.0.0.0", port=5000)
+
