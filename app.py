@@ -1973,8 +1973,22 @@ def api_sync():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-with app.app_context():
-    db.create_all()
+def init_db_migration():
+    with app.app_context():
+        db.create_all()
+        try:
+            conn = db.engine.raw_connection()
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(assurance_ticket)")
+            cols = [info[1] for info in cursor.fetchall()]
+            if "status_garansi" not in cols:
+                cursor.execute("ALTER TABLE assurance_ticket ADD COLUMN status_garansi VARCHAR(100)")
+                conn.commit()
+                print("Migrated assurance_ticket table with status_garansi column")
+        except Exception as e:
+            print("DB Migration Note:", e)
+
+init_db_migration()
 
 if __name__ == "__main__":
     with app.app_context():
