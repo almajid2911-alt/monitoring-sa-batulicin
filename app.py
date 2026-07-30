@@ -1361,13 +1361,21 @@ def call_openrouter_api(prompt):
         "X-Title": "SA Batulicin Bot"
     }
 
-    # Fetch live free model list dynamically from OpenRouter
-    models_to_try = ["openrouter/free"]
+    # Top free models priority list
+    models_to_try = [
+        "openrouter/free",
+        "google/gemma-2-9b-it:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "qwen/qwen-2.5-72b-instruct:free",
+        "mistralai/mistral-7b-instruct:free"
+    ]
     try:
         m_res = requests.get("https://openrouter.ai/api/v1/models", timeout=5)
         if m_res.status_code == 200:
             live_models = [m['id'] for m in m_res.json().get('data', []) if m['id'].endswith(':free')]
-            models_to_try.extend(live_models)
+            for lm in live_models:
+                if lm not in models_to_try:
+                    models_to_try.append(lm)
     except Exception:
         pass
 
