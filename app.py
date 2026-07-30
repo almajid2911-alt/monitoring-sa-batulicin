@@ -249,6 +249,11 @@ def dedupe_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
 
     return list(buckets.values())
 
+def update_if_changed(obj, attr, new_val):
+    if getattr(obj, attr) != new_val:
+        setattr(obj, attr, new_val)
+
+
 
 def match_status(row: dict[str, str], allowed: set[str]) -> bool:
     val = row.get("Status") or row.get("status")
@@ -519,32 +524,31 @@ def sync_orders():
             existing_status_score = preferred_statuses.get(normalize_upper(existing.status), -1)
             # update if new status is higher or equal
             if new_status_score >= existing_status_score:
-                existing.tim = normalize_text(row_dict.get("TIM") or row_dict.get("tim"))
-                existing.workorder = normalize_text(row_dict.get("Workorder"))
-                existing.odc = normalize_text(row_dict.get("ODC"))
-                existing.status = normalize_text(row_dict.get("Status"))
-                # Robust mapping for status morning
-                existing.status_morning = normalize_text(row_dict.get("status morning") or row_dict.get("Status Morning") or row_dict.get("status_morning"))
-                existing.catatan = normalize_text(row_dict.get("Catatan"))
-                existing.jam_re = normalize_text(row_dict.get("Jam re"))
-                existing.jam_ps = normalize_text(row_dict.get("Jam PS"))
-                existing.status_date_raw = normalize_text(row_dict.get("Status Date"))
-                existing.status_date_parsed = parsed_date
-                existing.date_created_raw = normalize_text(date_created_val)
-                existing.date_created_parsed = parsed_created_date
-                existing.date_modified_raw = normalize_text(date_modified_val)
-                existing.date_modified_parsed = parsed_modified_date
-                existing.crm_order_type = normalize_text(row_dict.get("CRM Order Type"))
-                existing.product_name = normalize_text(row_dict.get("Product Name"))
-                existing.tgl_ps = normalize_text(row_dict.get("tgl ps"))
-                existing.tgl_ps_parsed = parsed_tgl_ps
-                existing.workzone = normalize_text(row_dict.get("Workzone"))
-                existing.dispatch_date = parsed_dispatch
-                existing.kordinat = clean_coordinates(normalize_text(row_dict.get("KORDINAT") or row_dict.get("kordinat")))
-                existing.wilsus = normalize_text(row_dict.get("Wilsus") or row_dict.get("wilsus"))
-                existing.eskal_daman = normalize_text(row_dict.get("Eskal daman") or row_dict.get("eskal_daman"))
-                existing.validasi = normalize_text(row_dict.get("VALIDASI") or row_dict.get("validasi"))
-                existing.jenis_order = normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper()
+                update_if_changed(existing, "tim", normalize_text(row_dict.get("TIM") or row_dict.get("tim")))
+                update_if_changed(existing, "workorder", normalize_text(row_dict.get("Workorder")))
+                update_if_changed(existing, "odc", normalize_text(row_dict.get("ODC")))
+                update_if_changed(existing, "status", normalize_text(row_dict.get("Status")))
+                update_if_changed(existing, "status_morning", normalize_text(row_dict.get("status morning") or row_dict.get("Status Morning") or row_dict.get("status_morning")))
+                update_if_changed(existing, "catatan", normalize_text(row_dict.get("Catatan")))
+                update_if_changed(existing, "jam_re", normalize_text(row_dict.get("Jam re")))
+                update_if_changed(existing, "jam_ps", normalize_text(row_dict.get("Jam PS")))
+                update_if_changed(existing, "status_date_raw", normalize_text(row_dict.get("Status Date")))
+                update_if_changed(existing, "status_date_parsed", parsed_date)
+                update_if_changed(existing, "date_created_raw", normalize_text(date_created_val))
+                update_if_changed(existing, "date_created_parsed", parsed_created_date)
+                update_if_changed(existing, "date_modified_raw", normalize_text(date_modified_val))
+                update_if_changed(existing, "date_modified_parsed", parsed_modified_date)
+                update_if_changed(existing, "crm_order_type", normalize_text(row_dict.get("CRM Order Type")))
+                update_if_changed(existing, "product_name", normalize_text(row_dict.get("Product Name")))
+                update_if_changed(existing, "tgl_ps", normalize_text(row_dict.get("tgl ps")))
+                update_if_changed(existing, "tgl_ps_parsed", parsed_tgl_ps)
+                update_if_changed(existing, "workzone", normalize_text(row_dict.get("Workzone")))
+                update_if_changed(existing, "dispatch_date", parsed_dispatch)
+                update_if_changed(existing, "kordinat", clean_coordinates(normalize_text(row_dict.get("KORDINAT") or row_dict.get("kordinat"))))
+                update_if_changed(existing, "wilsus", normalize_text(row_dict.get("Wilsus") or row_dict.get("wilsus")))
+                update_if_changed(existing, "eskal_daman", normalize_text(row_dict.get("Eskal daman") or row_dict.get("eskal_daman")))
+                update_if_changed(existing, "validasi", normalize_text(row_dict.get("VALIDASI") or row_dict.get("validasi")))
+                update_if_changed(existing, "jenis_order", normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper())
         else:
             new_order = Order(
                 track_order=tr_order,
@@ -619,29 +623,29 @@ def sync_assurance_tickets() -> int:
                 db.session.add(t)
                 existing_tickets[inc] = t
 
-            t.device_name = normalize_text(r.get("DEVICE NAME"))
-            t.service_no = normalize_text(r.get("SERVICE NO"))
-            t.workzone = normalize_text(r.get("WORKZONE"))
-            t.summary = normalize_text(r.get("SUMMARY"))
-            t.customer_segment = normalize_text(r.get("CUSTOMER SEGMENT"))
-            t.reported_date = normalize_text(r.get("REPORTED DATE"))
-            t.customer_type = normalize_text(r.get("CUSTOMER TYPE"))
-            t.guarante_status = normalize_text(r.get("GUARANTE STATUS"))
-            t.status_garansi = normalize_text(r.get("STATUS GARANSI"))
-            t.description_assignment = normalize_text(r.get("DESCRIPTION ASSIGMENT"))
-            t.booking_date = normalize_text(r.get("BOOKING DATE"))
-            t.hasil_ukur = normalize_text(r.get("HASIL UKUR"))
-            t.redaman = normalize_text(r.get("REDAMAN"))
-            t.ttr = normalize_text(r.get("TTR"))
-            t.flag = normalize_text(r.get("FLAG"))
-            t.tim = normalize_text(r.get("TIM") or r.get("TIM KAWAN"))
-            t.odc_real = normalize_text(r.get("ODC REAL"))
-            t.wilsus = normalize_text(r.get("WILSUS"))
-            t.status_kawan = normalize_text(r.get("STATUS KAWAN"))
-            t.catatan = normalize_text(r.get("CATATAN"))
-            t.jam_manja = normalize_text(r.get("JAM MANJA"))
-            t.tim_insera = normalize_text(r.get("TIM INSERA"))
-            t.tim_kawan = normalize_text(r.get("TIM KAWAN"))
+            update_if_changed(t, "device_name", normalize_text(r.get("DEVICE NAME")))
+            update_if_changed(t, "service_no", normalize_text(r.get("SERVICE NO")))
+            update_if_changed(t, "workzone", normalize_text(r.get("WORKZONE")))
+            update_if_changed(t, "summary", normalize_text(r.get("SUMMARY")))
+            update_if_changed(t, "customer_segment", normalize_text(r.get("CUSTOMER SEGMENT")))
+            update_if_changed(t, "reported_date", normalize_text(r.get("REPORTED DATE")))
+            update_if_changed(t, "customer_type", normalize_text(r.get("CUSTOMER TYPE")))
+            update_if_changed(t, "guarante_status", normalize_text(r.get("GUARANTE STATUS")))
+            update_if_changed(t, "status_garansi", normalize_text(r.get("STATUS GARANSI")))
+            update_if_changed(t, "description_assignment", normalize_text(r.get("DESCRIPTION ASSIGMENT")))
+            update_if_changed(t, "booking_date", normalize_text(r.get("BOOKING DATE")))
+            update_if_changed(t, "hasil_ukur", normalize_text(r.get("HASIL UKUR")))
+            update_if_changed(t, "redaman", normalize_text(r.get("REDAMAN")))
+            update_if_changed(t, "ttr", normalize_text(r.get("TTR")))
+            update_if_changed(t, "flag", normalize_text(r.get("FLAG")))
+            update_if_changed(t, "tim", normalize_text(r.get("TIM") or r.get("TIM KAWAN")))
+            update_if_changed(t, "odc_real", normalize_text(r.get("ODC REAL")))
+            update_if_changed(t, "wilsus", normalize_text(r.get("WILSUS")))
+            update_if_changed(t, "status_kawan", normalize_text(r.get("STATUS KAWAN")))
+            update_if_changed(t, "catatan", normalize_text(r.get("CATATAN")))
+            update_if_changed(t, "jam_manja", normalize_text(r.get("JAM MANJA")))
+            update_if_changed(t, "tim_insera", normalize_text(r.get("TIM INSERA")))
+            update_if_changed(t, "tim_kawan", normalize_text(r.get("TIM KAWAN")))
 
             synced_count += 1
 
@@ -1186,6 +1190,7 @@ def api_assurance_detail():
     category = request.args.get("category", "")
     sektor = request.args.get("sektor", "")
     wilsus = request.args.get("wilsus", "")
+    jenis_tiket = request.args.get("jenis_tiket", "")
 
     query = AssuranceTicket.query
     all_tickets = query.all()
@@ -1208,6 +1213,17 @@ def api_assurance_detail():
 
     if wilsus and wilsus.strip() not in {"-", "", "ALL"}:
         rows = [r for r in rows if normalize_upper(r.get("wilsus")) == normalize_upper(wilsus)]
+
+    if jenis_tiket:
+        jt_up = normalize_upper(jenis_tiket)
+        if jt_up == "REGULER":
+            rows = [r for r in rows if r["jenis_tiket"] not in {"SQM", "UNSPEC", "UNSPEK"}]
+        elif jt_up == "SQM":
+            rows = [r for r in rows if r["jenis_tiket"] == "SQM" or "SQM" in normalize_upper(r.get("summary"))]
+        elif jt_up == "UNSPEC":
+            rows = [r for r in rows if r["jenis_tiket"] in {"UNSPEC", "UNSPEK"} or "UNSPEC" in normalize_upper(r.get("summary")) or "UNSPEK" in normalize_upper(r.get("summary"))]
+        else:
+            rows = [r for r in rows if normalize_upper(r["jenis_tiket"]) == jt_up]
 
 
 
@@ -1780,12 +1796,15 @@ def api_dashboard_detail():
     end_date = request.args.get("end_date", "")
     category = request.args.get("category", "")
     sektor = request.args.get("sektor", "")
+    jenis_order = request.args.get("jenis_order", "")
 
     query = Order.query
     if start_date:
         query = query.filter(Order.status_date_parsed >= start_date)
     if end_date:
         query = query.filter(Order.status_date_parsed <= end_date)
+    if jenis_order:
+        query = query.filter(db.func.upper(Order.jenis_order) == jenis_order.upper())
 
     filtered_db_rows = query.all()
     filtered_rows = [o.to_dict() for o in filtered_db_rows]
@@ -1809,7 +1828,10 @@ def api_dashboard_detail():
     result = []
     if category == "total_ps":
         # PS hari ini: COMPWORK dengan tgl_ps_parsed = today (fallback: date_modified, status_date)
-        all_db_rows = Order.query.all()
+        query_all = Order.query
+        if jenis_order:
+            query_all = query_all.filter(db.func.upper(Order.jenis_order) == jenis_order.upper())
+        all_db_rows = query_all.all()
         all_rows = [o.to_dict() for o in all_db_rows]
         if allowed_wz:
             all_rows = [r for r in all_rows if normalize_upper(r.get("workzone")) in allowed_wz]
@@ -1857,7 +1879,11 @@ def api_dashboard_detail():
         today_wita = now_wita.strftime("%Y-%m-%d")
         persistent_statuses = {"SEDANG DIKERJAKAN", "PENDING", "MATERIAL/NTE", "PROSES SETTING", "BELUM DIKERJAKAN"}
 
-        all_rows_list = [o.to_dict() for o in Order.query.all()]
+        query_idle = Order.query
+        if jenis_order:
+            query_idle = query_idle.filter(db.func.upper(Order.jenis_order) == jenis_order.upper())
+        all_rows_list = [o.to_dict() for o in query_idle.all()]
+        
         if sektor:
             sektor_map = {"batulicin": {"BLC", "SER"}, "satui": {"STI", "PGT", "KIP"}, "kotabaru": {"KPL"}}
             allowed_wz = sektor_map.get(sektor.lower(), set())
@@ -1882,7 +1908,14 @@ def api_dashboard_detail():
         idle_teams = sorted(list({t for t, is_ogp in team_status_map.items() if not is_ogp}))
         return jsonify({"success": True, "data": [{"tim": t.upper()} for t in idle_teams]})
     elif category == "perlu_failwa":
-        source_rows = filtered_rows if (start_date or end_date) else [o.to_dict() for o in Order.query.all()]
+        if start_date or end_date:
+            source_rows = filtered_rows
+        else:
+            query_fw = Order.query
+            if jenis_order:
+                query_fw = query_fw.filter(db.func.upper(Order.jenis_order) == jenis_order.upper())
+            source_rows = [o.to_dict() for o in query_fw.all()]
+
         if sektor:
             sektor_map = {"batulicin": {"BLC", "SER"}, "satui": {"STI", "PGT", "KIP"}, "kotabaru": {"KPL"}}
             allowed_wz = sektor_map.get(sektor.lower(), set())
@@ -1907,7 +1940,11 @@ def api_dashboard_detail():
         wil_req = request.args.get("wilsus", "")
         jen_req = request.args.get("jenis", "")
 
-        source_rows = [o.to_dict() for o in Order.query.all()]
+        query_pivot = Order.query
+        if jenis_order:
+            query_pivot = query_pivot.filter(db.func.upper(Order.jenis_order) == jenis_order.upper())
+        source_rows = [o.to_dict() for o in query_pivot.all()]
+        
         if sektor:
             sektor_map = {"batulicin": {"BLC", "SER"}, "satui": {"STI", "PGT", "KIP"}, "kotabaru": {"KPL"}}
             allowed_wz = sektor_map.get(sektor.lower(), set())

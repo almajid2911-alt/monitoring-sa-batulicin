@@ -498,10 +498,13 @@ function cleanCoordinates(coordStr) {
     const urlParams = new URLSearchParams(window.location.search);
     const startDate = urlParams.get("start_date") || "";
     const endDate = urlParams.get("end_date") || "";
+    const wilsus = urlParams.get("wilsus") || "";
+    const jenis_tiket = urlParams.get("jenis_tiket") || "";
+    const jenis_order = urlParams.get("jenis_order") || "";
 
     const fetchUrl = isAssurance
-      ? `/api/assurance/detail?category=${type}&sektor=${sektor}`
-      : `/api/dashboard/detail?start_date=${startDate}&end_date=${endDate}&category=${type}&sektor=${sektor}`;
+      ? `/api/assurance/detail?category=${type}&sektor=${sektor}&wilsus=${encodeURIComponent(wilsus)}&jenis_tiket=${encodeURIComponent(jenis_tiket)}`
+      : `/api/dashboard/detail?start_date=${startDate}&end_date=${endDate}&category=${type}&sektor=${sektor}&wilsus=${encodeURIComponent(wilsus)}&jenis_order=${encodeURIComponent(jenis_order)}`;
 
     fetch(fetchUrl)
       .then(res => res.json())
