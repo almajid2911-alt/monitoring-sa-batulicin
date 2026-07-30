@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import os
 import re
+import threading
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
+import google.generativeai as genai
 import requests
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
@@ -908,449 +911,6 @@ def load_assurance_data(sektor: str = "", wilsus: str = "", jenis_tiket: str = "
 
 
 
-def load_dashboard_data(start_date: str, end_date: str, sektor: str = "") -> dict:
-    query = Order.query
-    if start_date:
-        query = query.filter(Order.status_date_parsed >= start_date)
-    if end_date:
-        query = query.filter(Order.status_date_parsed <= end_date)
-
-    filtered_db_rows = query.all()
-    filtered_rows = [o.to_dict() for o in filtered_db_rows]
-
-    # Special fetch for matrix (DISPATCH): All rows that might be needed
-    # (either DISPATCH == today OR status_morning is active/pending)
-    all_db_rows = Order.query.all()
-    matrix_source_rows = [o.to_dict() for o in all_db_rows]
-
-    # Determine "Today" context for metrics
-    # Default to current WITA (GMT+8) time
-    now_utc = datetime.now(timezone.utc)
-    now_wita = now_utc + timedelta(hours=8)
-    default_today_wita = now_wita.strftime("%Y-%m-%d")
-
-    # If end_date filter is present, use it as the "today" reference for PS and Ranking
-    today = end_date or default_today_wita
-    today_month = today[:7]
-    
-    today_db_rows = Order.query.filter(Order.status_date_parsed == today).all()
-    today_rows = [o.to_dict() for o in today_db_rows]
-
-    if sektor:
-        sektor_map = {
-            "batulicin": {"BLC", "SER"},
-            "satui": {"STI", "PGT", "KIP"},
-            "kotabaru": {"KPL"}
-        }
-        allowed_wz = sektor_map.get(sektor.lower())
-        if allowed_wz:
-            filtered_rows = [r for r in filtered_rows if normalize_upper(r.get("workzone")) in allowed_wz]
-            today_rows = [r for r in today_rows if normalize_upper(r.get("workzone")) in allowed_wz]
-            matrix_source_rows = [r for r in matrix_source_rows if normalize_upper(r.get("workzone")) in allowed_wz]
-
-    # ── Matrix + Ranking ──────────────────────────────────────────────────────
-    matrix_rows_flat = []
-    tim_today_counter: Counter = Counter()
-    tim_mtd_counter: Counter = Counter()
-
-    # We group by (Workzone + TIM) to determine if that group has any OGP status
-    team_status_map = {} # (workzone, tim) -> is_ogp
-    
-    for row in matrix_source_rows:
-        tim = normalize_text(row.get("TIM"))
-        wz = normalize_text(row.get("workzone"))
-        status_morning_up = normalize_upper(row.get("status morning"))
-        
-        if not is_truthy_text(tim) or tim == "-":
-            continue
-            
-        key = (wz.lower(), tim.lower())
-        if key not in team_status_map:
-            team_status_map[key] = False
-            
-        if status_morning_up in {"SEDANG DIKERJAKAN", "PROSES SETTING"}:
-            team_status_map[key] = True
-
-    for row in matrix_source_rows:
-        status_up = normalize_upper(row.get("Status"))
-        tim = normalize_text(row.get("TIM"))
-        wz = normalize_text(row.get("workzone"))
-        status_morning_up = normalize_upper(row.get("status morning"))
-        dispatch_date = row.get("dispatch_date")
-
-        is_today = (dispatch_date == today)
-        # Robust check for status variations
-        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
-        is_potensi_st = any(v in status_up for v in potensi_keywords)
-        is_setting_sm = (status_morning_up == "PROSES SETTING")
-        is_potensi = (is_potensi_st or is_setting_sm)
-
-        is_persistent = status_morning_up in {"SEDANG DIKERJAKAN", "PENDING", "MATERIAL/NTE", "PROSES SETTING", "BELUM DIKERJAKAN"}
-
-        if is_today or is_persistent:
-            team_flag = "IDLE"
-            if is_truthy_text(tim) and tim != "-":
-                key = (wz.lower(), tim.lower())
-                if team_status_map.get(key, False):
-                    team_flag = "OGP"
-                    
-            matrix_rows_flat.append({
-                "workzone": wz or "BELUM ADA",
-                "tim": tim or "-",
-                "team_flag": team_flag,
-                "track_order": row.get("track_order", "-"),
-                "odc": row.get("ODC", "-"),
-                "kordinat": row.get("kordinat", ""),
-                "status_morning": row.get("status morning", "BELUM MAPPED"),
-                "catatan": row.get("Catatan", ""),
-                "is_ps_today": (status_up == "COMPWORK" and is_today)
-            })
-
-    for row in today_rows:
-        status_up = normalize_upper(row.get("Status"))
-        tim = normalize_text(row.get("TIM"))
-        if status_up == "COMPWORK" and is_truthy_text(tim) and tim != "-":
-            tim_today_counter[tim] += 1
-
-    mtd_query = Order.query.filter(Order.status_date_parsed.like(f"{today_month}%")).all()
-    mtd_rows = [o.to_dict() for o in mtd_query]
-    if sektor:
-        allowed_wz = sektor_map.get(sektor.lower())
-        if allowed_wz:
-            mtd_rows = [r for r in mtd_rows if normalize_upper(r.get("workzone")) in allowed_wz]
-
-    for row in mtd_rows:
-        status_up = normalize_upper(row.get("Status"))
-        tim = normalize_text(row.get("TIM"))
-        if status_up == "COMPWORK" and is_truthy_text(tim) and tim != "-":
-            tim_mtd_counter[tim] += 1
-
-    matrix_rows_flat.sort(key=lambda x: (
-        (x["workzone"] or "").lower(),
-        (x["tim"] or "").lower(),
-        (x["track_order"] or "").lower()
-    ))
-
-    top_tim_today = [{"tim": tim, "count": count} for tim, count in tim_today_counter.most_common(5)]
-    top_tim_mtd = [{"tim": tim, "count": count} for tim, count in tim_mtd_counter.most_common(5)]
-
-    # Filter Kendala Need FU
-    all_db_orders = [o.to_dict() for o in Order.query.all()]
-    if sektor:
-        allowed_wz = sektor_map.get(sektor.lower())
-        if allowed_wz:
-            all_db_orders = [r for r in all_db_orders if normalize_upper(r.get("workzone")) in allowed_wz]
-
-    kendala_fu_table = []
-    cek_pending_table = []
-    kendala_pelanggan_table = []
-    kendala_teknik_table = []
-
-    failwa_count = 0
-    undispatch_count = 0
-
-    validasi_pelanggan_sm = {"BATAL", "DOUBLE INPUT", "KENDALA IZIN", "GANTI PAKET", "INDIKASI CABUT PASANG", "RUMAH KOSONG"}
-    validasi_teknik_sm = {"ODP FULL", "ODP JAUH", "KENDALA JALUR/RUTE TARIKAN", "NO ODP (TIDAK ADA ODP)", "LIMITASI ONU", "ODP BELUM GOLIVE", "ODP RUSAK", "INSERT TIANG"}
-
-    for r in all_db_orders:
-        st_up = normalize_upper(r.get("Status"))
-        sm_up = normalize_upper(r.get("status morning"))
-        tim = normalize_text(r.get("TIM"))
-        st_date = r.get("status_date_parsed") or ""
-
-        if st_up in {"WORKFAIL", "STARTWORK"}:
-            if st_up == "STARTWORK" and st_date and st_date < today:
-                failwa_count += 1
-            if not is_truthy_text(tim) or tim == "-":
-                undispatch_count += 1
-
-            if sm_up in validasi_pelanggan_sm:
-                kendala_pelanggan_table.append({
-                    "workorder": r.get("Workorder", "-"),
-                    "track_order": r.get("track_order", "-"),
-                    "product_name": get_product_name_normalized(r),
-                    "odc": r.get("ODC", "-"),
-                    "tim": tim or "-",
-                    "status_morning": r.get("status morning", "-"),
-                    "catatan": r.get("Catatan", "-"),
-                    "validasi": r.get("validasi") or r.get("VALIDASI") or "-"
-                })
-
-            if sm_up in validasi_teknik_sm:
-                kendala_teknik_table.append({
-                    "workorder": r.get("Workorder", "-"),
-                    "track_order": r.get("track_order", "-"),
-                    "product_name": get_product_name_normalized(r),
-                    "odc": r.get("ODC", "-"),
-                    "tim": tim or "-",
-                    "status_morning": r.get("status morning", "-"),
-                    "catatan": r.get("Catatan", "-"),
-                    "validasi": r.get("validasi") or r.get("VALIDASI") or "-"
-                })
-
-            if sm_up in {"PENDING", "PERLU DI FAILWA", "KENDALA TEKNIS", "KENDALA PELANGGAN"}:
-                kendala_fu_table.append({
-                    "workorder": r.get("Workorder", "-"),
-                    "track_order": r.get("track_order", "-"),
-                    "product_name": get_product_name_normalized(r),
-                    "odc": r.get("ODC", "-"),
-                    "tim": tim or "-",
-                    "status_morning": r.get("status morning", "-"),
-                    "catatan": r.get("Catatan", "-"),
-                    "eskal_daman": r.get("eskal_daman") or r.get("Eskal daman") or "-"
-                })
-
-            if "PENDING" in sm_up or st_up == "WORKFAIL":
-                cek_pending_table.append({
-                    "workorder": r.get("Workorder", "-"),
-                    "track_order": r.get("track_order", "-"),
-                    "product_name": get_product_name_normalized(r),
-                    "odc": r.get("ODC", "-"),
-                    "tim": tim or "-",
-                    "status_morning": r.get("status morning", "-"),
-                    "catatan": r.get("Catatan", "-"),
-                    "eskal_daman": r.get("eskal_daman") or r.get("Eskal daman") or "-"
-                })
-
-    query_re = Order.query
-    if start_date:
-        query_re = query_re.filter(Order.date_created_parsed >= start_date)
-    if end_date:
-        query_re = query_re.filter(Order.date_created_parsed <= end_date)
-    else:
-        query_re = query_re.filter(Order.date_created_parsed == today)
-    
-    re_db_rows = query_re.all()
-    re_rows = [o.to_dict() for o in re_db_rows]
-    if sektor:
-        allowed_wz = sektor_map.get(sektor.lower())
-        if allowed_wz:
-            re_rows = [r for r in re_rows if normalize_upper(r.get("workzone")) in allowed_wz]
-
-    re_rows = [r for r in re_rows if normalize_upper(r.get("Status")) not in {"CNCLWORK", "WAPPR"}]
-
-    kendala_fu_table.sort(key=lambda x: (x.get("tim") or "").lower())
-    cek_pending_table.sort(key=lambda x: (x.get("tim") or "").lower())
-
-    unique_teams_in_matrix = {}
-    for r in matrix_rows_flat:
-        tname = r.get("tim")
-        if tname and tname != "-":
-            unique_teams_in_matrix[tname] = r.get("team_flag")
-            
-    idle_teams_count = sum(1 for flag in unique_teams_in_matrix.values() if flag == "IDLE")
-
-    summary_data = build_summary(matrix_source_rows, today_rows)
-    summary_data["idle_teams_count"] = idle_teams_count
-
-    sisa_pivot_data = build_sisa_pivot(matrix_source_rows)
-
-    detail_potensi_table = []
-
-    for row in filtered_rows:
-        status_up = normalize_upper(row.get("Status"))
-        status_morning_up = normalize_upper(row.get("status morning"))
-
-        if status_up in {"ACTCOMP", "VALSTART"} or status_morning_up == "PROSES SETTING":
-            detail_potensi_table.append({
-                "workorder": row.get("Workorder", "-"),
-                "track_order": row.get("track_order", "-"),
-                "product_name": get_product_name_normalized(row),
-                "odc": row.get("ODC", "-"),
-                "tim": row.get("TIM") or row.get("tim") or "-",
-                "status_morning": row.get("status morning", "-"),
-                "catatan": row.get("Catatan", "-"),
-                "eskal_daman": row.get("eskal_daman") or row.get("Eskal Daman") or row.get("ESKAL DAMAN") or "-",
-                "status": row.get("Status", "-")
-            })
-
-    return {
-        "source": "sqlite_database",
-        "summary": summary_data,
-        "jam_ps_chart": build_hour_chart(jam_ps_source, "Jam PS"),
-        "jam_re_chart": build_hour_chart(re_rows, "Jam re"),
-        "matrix_rows": matrix_rows_flat,
-        "row_count": len(filtered_rows),
-        "today_date": today,
-        "kendala_fu": kendala_fu_table,
-        "cek_pending": cek_pending_table,
-        "kendala_pelanggan": kendala_pelanggan_table,
-        "kendala_teknik": kendala_teknik_table,
-        "detail_potensi": detail_potensi_table,
-        "failwa_count": failwa_count,
-        "undispatch_count": undispatch_count,
-        "top_tim_today": top_tim_today,
-        "top_tim_mtd": top_tim_mtd,
-        "sisa_pivot": sisa_pivot_data
-    }
-
-
-@app.route("/api/assurance/detail")
-def api_assurance_detail():
-    category = request.args.get("category", "")
-    sektor = request.args.get("sektor", "")
-    wilsus = request.args.get("wilsus", "")
-    jenis_tiket = request.args.get("jenis_tiket", "")
-
-    query = AssuranceTicket.query
-    all_tickets = query.all()
-    rows = [t.to_dict() for t in all_tickets]
-
-    for r in rows:
-        r["jenis_tiket"] = get_jenis_tiket(r)
-        r["is_manja"] = get_is_manja(r)
-
-    if sektor:
-
-        sektor_map = {
-            "batulicin": {"BLC", "SER"},
-            "satui": {"STI", "PGT", "KIP"},
-            "kotabaru": {"KPL"}
-        }
-        allowed_wz = sektor_map.get(sektor.lower())
-        if allowed_wz:
-            rows = [r for r in rows if normalize_upper(r.get("workzone")) in allowed_wz]
-
-    if wilsus and wilsus.strip() not in {"-", "", "ALL"}:
-        rows = [r for r in rows if normalize_upper(r.get("wilsus")) == normalize_upper(wilsus)]
-
-    if jenis_tiket:
-        jt_up = normalize_upper(jenis_tiket)
-        if jt_up == "REGULER":
-            rows = [r for r in rows if r["jenis_tiket"] not in {"SQM", "UNSPEC", "UNSPEK"}]
-        elif jt_up == "SQM":
-            rows = [r for r in rows if r["jenis_tiket"] == "SQM" or "SQM" in normalize_upper(r.get("summary"))]
-        elif jt_up == "UNSPEC":
-            rows = [r for r in rows if r["jenis_tiket"] in {"UNSPEC", "UNSPEK"} or "UNSPEC" in normalize_upper(r.get("summary")) or "UNSPEK" in normalize_upper(r.get("summary"))]
-        else:
-            rows = [r for r in rows if normalize_upper(r["jenis_tiket"]) == jt_up]
-
-
-
-    def parse_ttr_val(val_str: str) -> float:
-        if not val_str: return 0.0
-        try:
-            return float(val_str.replace(',', '.').strip())
-        except:
-            return 0.0
-
-    def parse_redaman_val(val_str: str) -> float:
-        if not val_str or val_str.strip() in {"-", ""}: return 0.0
-        try:
-            return float(val_str.replace(',', '.').strip())
-        except:
-            return 0.0
-
-    def is_sqm_or_unspec(summary_str: str) -> bool:
-        s = (summary_str or "").upper()
-        return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
-
-    def is_garansi_ticket(r: dict) -> bool:
-        st_g = normalize_upper(r.get("status_garansi"))
-        if st_g and ("GARANSI" in st_g or st_g in {"YES", "TRUE", "1", "Y"}):
-            return True
-        st = normalize_upper(r.get("guarante_status"))
-        if not st:
-            return False
-        if "NOT" in st or "NON" in st or st == "NO":
-            return False
-        return "GARANSI" in st or "GUARANTEE" in st
-
-    result = []
-    for r in rows:
-        cust_type = normalize_upper(r.get("customer_type"))
-        cust_seg = normalize_upper(r.get("customer_segment"))
-        summary = normalize_upper(r.get("summary"))
-        garansi_st = normalize_upper(r.get("guarante_status"))
-        sk = normalize_upper(r.get("status_kawan"))
-        tim = normalize_text(r.get("tim"))
-        desc_assign = normalize_upper(r.get("description_assignment"))
-        hasil_uk = normalize_upper(r.get("hasil_ukur"))
-        redaman_val = parse_redaman_val(r.get("redaman"))
-        ttr_val = parse_ttr_val(r.get("ttr"))
-
-        is_pl_tsel = (cust_seg == "PL-TSEL")
-
-        if category == "assurance_saldo":
-            result.append(r)
-        elif category == "rbs_indibiz":
-            if cust_seg == "RBS": result.append(r)
-        elif category == "tik_manja":
-            if "CUSTOMER ASSIGN" in desc_assign: result.append(r)
-        elif category == "online_redaman":
-            if hasil_uk == "ONLINE" and redaman_val < -24.0: result.append(r)
-        elif category == "hvc_gold":
-            if is_pl_tsel and "GOLD" in cust_type and not is_sqm_or_unspec(summary): result.append(r)
-        elif category == "hvc_diamond":
-            if is_pl_tsel and "DIAMOND" in cust_type and not is_sqm_or_unspec(summary): result.append(r)
-        elif category == "hvc_platinum":
-            if is_pl_tsel and "PLATINUM" in cust_type and not is_sqm_or_unspec(summary): result.append(r)
-        elif category == "reguler":
-            if is_pl_tsel and ("REGULER" in cust_type or "REGULAR" in cust_type) and not is_sqm_or_unspec(summary): result.append(r)
-        elif category == "garansi":
-            if is_pl_tsel and is_garansi_ticket(r): result.append(r)
-        elif category == "osla":
-            if is_pl_tsel and ttr_val > 12.0 and not is_sqm_or_unspec(summary): result.append(r)
-        elif category == "sqm":
-            if is_pl_tsel and "SQM" in summary: result.append(r)
-        elif category == "unspec":
-            if is_pl_tsel and ("UNSPEC" in summary or "UNSPEK" in summary): result.append(r)
-        elif category == "gamas":
-            if is_pl_tsel and "GAMAS" in summary: result.append(r)
-        elif category == "assurance_belum_dikerjakan":
-            if is_pl_tsel and sk in {"", "BELUM DIKERJAKAN"}: result.append(r)
-        elif category == "assurance_undispatch":
-            if is_pl_tsel and (not tim or tim == "-"): result.append(r)
-        elif category == "pivot_cell":
-            wz_req = request.args.get("workzone", "")
-            wil_req = request.args.get("wilsus", "")
-            jen_req = request.args.get("jenis", "")
-
-            matched = True
-            if wz_req and wz_req.strip() not in {"-", "", "ALL", "GRAND TOTAL"} and normalize_upper(r.get("workzone")) != normalize_upper(wz_req):
-                matched = False
-            if wil_req and wil_req.strip() not in {"-", "", "ALL"} and normalize_upper(r.get("wilsus")) != normalize_upper(wil_req):
-                matched = False
-            if jen_req and jen_req.strip() not in {"TOTAL", "GRAND TOTAL", ""}:
-                jt = normalize_upper(r.get("jenis_tiket"))
-                jr = normalize_upper(jen_req)
-                if "HVC DIAMOND" in jr or "PLATINUM" in jr:
-                    if jt not in {"HVC DIAMOND", "HVC PLATINUM"}:
-                        matched = False
-                elif jt != jr:
-                    matched = False
-            if matched:
-                result.append(r)
-
-
-
-    detail_rows = []
-    for r in result:
-        detail_rows.append({
-            "incident": r.get("incident", "-"),
-            "odc_real": r.get("odc_clean") or r.get("odc_real") or "-",
-            "service_no": r.get("service_no", "-"),
-            "customer_segment": r.get("customer_segment", "-"),
-            "reported_date": r.get("reported_date", "-"),
-            "customer_type": r.get("customer_type", "-"),
-            "hasil_ukur": r.get("hasil_ukur", "-"),
-            "redaman": r.get("redaman", "-"),
-            "ttr": r.get("ttr", "-"),
-            "flag": r.get("flag", "-"),
-            "tim": r.get("tim") or "-",
-            "wilsus": r.get("wilsus", "-"),
-            "status_kawan": r.get("status_kawan") or "EMPTY",
-            "catatan": r.get("catatan") or "-",
-            "jam_manja": r.get("jam_manja") or "-",
-            "summary": r.get("summary") or "-"
-        })
-
-    return jsonify({"success": True, "data": detail_rows})
-
-
-
-
-
 def load_dashboard_data(start_date: str, end_date: str, sektor: str = "", jenis_order: str = "") -> dict:
     query = Order.query
     if start_date:
@@ -1771,6 +1331,101 @@ def index():
 
 last_sync_time = datetime.now()
 
+
+# ─── TELEGRAM BOT AI AGENT ───────────────────────────────────────────────────
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+def send_telegram_message(chat_id, text):
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        print(f"Failed to send Telegram message: {e}")
+
+@app.route("/api/telegram/webhook", methods=["POST"])
+def telegram_webhook():
+    if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
+        return jsonify({"status": "disabled"}), 200
+
+    update = request.get_json()
+    if not update:
+        return "OK", 200
+
+    if "message" in update and "text" in update["message"]:
+        chat_id = update["message"]["chat"]["id"]
+        user_text = update["message"]["text"]
+        user_name = update["message"]["from"].get("first_name", "Pengguna")
+
+        # 1. Fetch current data
+        # We'll use a broad filter (empty) to give a global snapshot to the AI
+        try:
+            dashboard_data = load_dashboard_data("", "", "")
+            assurance_data = load_assurance_data("", "", "")
+
+            # Combine key summary numbers to feed to the LLM
+            # (Limit data to avoid hitting context limits or cluttering the prompt)
+            ai_context = {
+                "provisioning": dashboard_data["summary"],
+                "idle_teams": dashboard_data["summary"].get("idle_teams_count", 0),
+                "potensi_hari_ini": len(dashboard_data.get("detail_potensi", [])),
+                "undispatch_count": dashboard_data["undispatch_count"],
+                "assurance": {
+                    "total_saldo": assurance_data["total_saldo"],
+                    "hvc_count": (assurance_data.get("hvc_gold_count",0) + assurance_data.get("hvc_diamond_count",0) + assurance_data.get("hvc_platinum_count",0)),
+                    "platinum_count": assurance_data["hvc_platinum_count"],
+                    "gold_count": assurance_data["hvc_gold_count"],
+                    "garansi_count": assurance_data["garansi_count"],
+                    "pl_tsel_count": assurance_data["total_saldo"],
+                    "undispatch_assurance": assurance_data["undispatch_count"]
+                }
+            }
+            
+            # Additional details for top teams
+            top_teams = ", ".join([f"{t['tim']} ({t['count']})" for t in dashboard_data.get("top_tim_today", [])])
+            ai_context["top_tim_hari_ini"] = top_teams
+
+            context_json = json.dumps(ai_context, indent=2)
+
+            prompt = f"""
+Kamu adalah "Antigravity Bot", asisten AI profesional untuk tim teknisi SA Batulicin. 
+Tugasmu adalah menjawab pertanyaan pengguna tentang kondisi pekerjaan dan tiket berdasarkan data realtime dari database.
+Jawab dengan ramah, informatif, dan profesional dalam bahasa Indonesia. Gunakan format Markdown yang rapi (seperti **bold**, atau list jika perlu).
+
+Berikut adalah RINGKASAN DATA SAAT INI (Format JSON):
+{context_json}
+
+Keterangan:
+- "provisioning" berisi ringkasan Order Pasang Baru (PS, Kendala, Valdat, dsb).
+- "assurance" berisi ringkasan Tiket Gangguan (Manja) (Total saldo, HVC, Garansi, dll).
+
+Pertanyaan pengguna ({user_name}):
+"{user_text}"
+"""
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(prompt)
+            ai_reply = response.text
+            
+            send_telegram_message(chat_id, ai_reply)
+
+        except Exception as e:
+            print("AI Error:", e)
+            send_telegram_message(chat_id, f"Maaf {user_name}, saya sedang mengalami kendala teknis dalam memproses datamu: {str(e)}")
+
+    return "OK", 200
+
+
 @app.route("/api/dashboard/order")
 def api_dashboard_order():
     global last_sync_time
@@ -1998,6 +1653,169 @@ def api_dashboard_detail():
     return jsonify({"success": True, "data": detail_rows})
 
 
+
+
+@app.route("/api/assurance/detail")
+def api_assurance_detail():
+    category = request.args.get("category", "")
+    sektor = request.args.get("sektor", "")
+    wilsus = request.args.get("wilsus", "")
+    jenis_tiket = request.args.get("jenis_tiket", "")
+
+    query = AssuranceTicket.query
+    all_tickets = query.all()
+    rows = [t.to_dict() for t in all_tickets]
+
+    for r in rows:
+        r["jenis_tiket"] = get_jenis_tiket(r)
+        r["is_manja"] = get_is_manja(r)
+
+    if sektor:
+
+        sektor_map = {
+            "batulicin": {"BLC", "SER"},
+            "satui": {"STI", "PGT", "KIP"},
+            "kotabaru": {"KPL"}
+        }
+        allowed_wz = sektor_map.get(sektor.lower())
+        if allowed_wz:
+            rows = [r for r in rows if normalize_upper(r.get("workzone")) in allowed_wz]
+
+    if wilsus and wilsus.strip() not in {"-", "", "ALL"}:
+        rows = [r for r in rows if normalize_upper(r.get("wilsus")) == normalize_upper(wilsus)]
+
+    if jenis_tiket:
+        jt_up = normalize_upper(jenis_tiket)
+        if jt_up == "REGULER":
+            rows = [r for r in rows if r["jenis_tiket"] not in {"SQM", "UNSPEC", "UNSPEK"}]
+        elif jt_up == "SQM":
+            rows = [r for r in rows if r["jenis_tiket"] == "SQM" or "SQM" in normalize_upper(r.get("summary"))]
+        elif jt_up == "UNSPEC":
+            rows = [r for r in rows if r["jenis_tiket"] in {"UNSPEC", "UNSPEK"} or "UNSPEC" in normalize_upper(r.get("summary")) or "UNSPEK" in normalize_upper(r.get("summary"))]
+        else:
+            rows = [r for r in rows if normalize_upper(r["jenis_tiket"]) == jt_up]
+
+
+
+    def parse_ttr_val(val_str: str) -> float:
+        if not val_str: return 0.0
+        try:
+            return float(val_str.replace(',', '.').strip())
+        except:
+            return 0.0
+
+    def parse_redaman_val(val_str: str) -> float:
+        if not val_str or val_str.strip() in {"-", ""}: return 0.0
+        try:
+            return float(val_str.replace(',', '.').strip())
+        except:
+            return 0.0
+
+    def is_sqm_or_unspec(summary_str: str) -> bool:
+        s = (summary_str or "").upper()
+        return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
+
+    def is_garansi_ticket(r: dict) -> bool:
+        st_g = normalize_upper(r.get("status_garansi"))
+        if st_g and ("GARANSI" in st_g or st_g in {"YES", "TRUE", "1", "Y"}):
+            return True
+        st = normalize_upper(r.get("guarante_status"))
+        if not st:
+            return False
+        if "NOT" in st or "NON" in st or st == "NO":
+            return False
+        return "GARANSI" in st or "GUARANTEE" in st
+
+    result = []
+    for r in rows:
+        cust_type = normalize_upper(r.get("customer_type"))
+        cust_seg = normalize_upper(r.get("customer_segment"))
+        summary = normalize_upper(r.get("summary"))
+        garansi_st = normalize_upper(r.get("guarante_status"))
+        sk = normalize_upper(r.get("status_kawan"))
+        tim = normalize_text(r.get("tim"))
+        desc_assign = normalize_upper(r.get("description_assignment"))
+        hasil_uk = normalize_upper(r.get("hasil_ukur"))
+        redaman_val = parse_redaman_val(r.get("redaman"))
+        ttr_val = parse_ttr_val(r.get("ttr"))
+
+        is_pl_tsel = (cust_seg == "PL-TSEL")
+
+        if category == "assurance_saldo":
+            result.append(r)
+        elif category == "rbs_indibiz":
+            if cust_seg == "RBS": result.append(r)
+        elif category == "tik_manja":
+            if "CUSTOMER ASSIGN" in desc_assign: result.append(r)
+        elif category == "online_redaman":
+            if hasil_uk == "ONLINE" and redaman_val < -24.0: result.append(r)
+        elif category == "hvc_gold":
+            if is_pl_tsel and "GOLD" in cust_type and not is_sqm_or_unspec(summary): result.append(r)
+        elif category == "hvc_diamond":
+            if is_pl_tsel and "DIAMOND" in cust_type and not is_sqm_or_unspec(summary): result.append(r)
+        elif category == "hvc_platinum":
+            if is_pl_tsel and "PLATINUM" in cust_type and not is_sqm_or_unspec(summary): result.append(r)
+        elif category == "reguler":
+            if is_pl_tsel and ("REGULER" in cust_type or "REGULAR" in cust_type) and not is_sqm_or_unspec(summary): result.append(r)
+        elif category == "garansi":
+            if is_pl_tsel and is_garansi_ticket(r): result.append(r)
+        elif category == "osla":
+            if is_pl_tsel and ttr_val > 12.0 and not is_sqm_or_unspec(summary): result.append(r)
+        elif category == "sqm":
+            if is_pl_tsel and "SQM" in summary: result.append(r)
+        elif category == "unspec":
+            if is_pl_tsel and ("UNSPEC" in summary or "UNSPEK" in summary): result.append(r)
+        elif category == "gamas":
+            if is_pl_tsel and "GAMAS" in summary: result.append(r)
+        elif category == "assurance_belum_dikerjakan":
+            if is_pl_tsel and sk in {"", "BELUM DIKERJAKAN"}: result.append(r)
+        elif category == "assurance_undispatch":
+            if is_pl_tsel and (not tim or tim == "-"): result.append(r)
+        elif category == "pivot_cell":
+            wz_req = request.args.get("workzone", "")
+            wil_req = request.args.get("wilsus", "")
+            jen_req = request.args.get("jenis", "")
+
+            matched = True
+            if wz_req and wz_req.strip() not in {"-", "", "ALL", "GRAND TOTAL"} and normalize_upper(r.get("workzone")) != normalize_upper(wz_req):
+                matched = False
+            if wil_req and wil_req.strip() not in {"-", "", "ALL"} and normalize_upper(r.get("wilsus")) != normalize_upper(wil_req):
+                matched = False
+            if jen_req and jen_req.strip() not in {"TOTAL", "GRAND TOTAL", ""}:
+                jt = normalize_upper(r.get("jenis_tiket"))
+                jr = normalize_upper(jen_req)
+                if "HVC DIAMOND" in jr or "PLATINUM" in jr:
+                    if jt not in {"HVC DIAMOND", "HVC PLATINUM"}:
+                        matched = False
+                elif jt != jr:
+                    matched = False
+            if matched:
+                result.append(r)
+
+
+
+    detail_rows = []
+    for r in result:
+        detail_rows.append({
+            "incident": r.get("incident", "-"),
+            "odc_real": r.get("odc_clean") or r.get("odc_real") or "-",
+            "service_no": r.get("service_no", "-"),
+            "customer_segment": r.get("customer_segment", "-"),
+            "reported_date": r.get("reported_date", "-"),
+            "customer_type": r.get("customer_type", "-"),
+            "hasil_ukur": r.get("hasil_ukur", "-"),
+            "redaman": r.get("redaman", "-"),
+            "ttr": r.get("ttr", "-"),
+            "flag": r.get("flag", "-"),
+            "tim": r.get("tim") or "-",
+            "wilsus": r.get("wilsus", "-"),
+            "status_kawan": r.get("status_kawan") or "EMPTY",
+            "catatan": r.get("catatan") or "-",
+            "jam_manja": r.get("jam_manja") or "-",
+            "summary": r.get("summary") or "-"
+        })
+
+    return jsonify({"success": True, "data": detail_rows})
 
 
 @app.route("/api/sync", methods=["POST"])
