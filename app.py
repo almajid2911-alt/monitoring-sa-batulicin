@@ -1352,15 +1352,7 @@ def send_telegram_message(chat_id, text):
 def call_openrouter_api(prompt):
     api_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
     if not api_key:
-        raise Exception("API Key OpenRouter/Gemini tidak ditemukan. Harap isi OPENROUTER_API_KEY di Railway.")
-
-    models_to_try = [
-        "meta-llama/llama-3.1-8b-instruct:free",
-        "google/gemma-2-9b-it:free",
-        "mistralai/mistral-7b-instruct:free",
-        "qwen/qwen-2.5-72b-instruct:free",
-        "deepseek/deepseek-r1:free"
-    ]
+        raise Exception("API Key OpenRouter tidak ditemukan. Harap isi OPENROUTER_API_KEY di Railway.")
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -1368,6 +1360,16 @@ def call_openrouter_api(prompt):
         "HTTP-Referer": "https://monitoring.internetbisnis.biz.id",
         "X-Title": "SA Batulicin Bot"
     }
+
+    # Fetch live free model list dynamically from OpenRouter
+    models_to_try = ["openrouter/free"]
+    try:
+        m_res = requests.get("https://openrouter.ai/api/v1/models", timeout=5)
+        if m_res.status_code == 200:
+            live_models = [m['id'] for m in m_res.json().get('data', []) if m['id'].endswith(':free')]
+            models_to_try.extend(live_models)
+    except Exception:
+        pass
 
     last_error = ""
     for model_name in models_to_try:
@@ -1379,7 +1381,7 @@ def call_openrouter_api(prompt):
             ]
         }
         try:
-            res = requests.post(url, headers=headers, json=payload, timeout=25)
+            res = requests.post(url, headers=headers, json=payload, timeout=30)
             data = res.json()
             if res.status_code == 200 and "choices" in data and len(data["choices"]) > 0:
                 content = data["choices"][0].get("message", {}).get("content", "")
