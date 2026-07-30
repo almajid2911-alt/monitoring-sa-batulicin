@@ -1413,9 +1413,23 @@ Keterangan:
 Pertanyaan pengguna ({user_name}):
 "{user_text}"
 """
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(prompt)
-            ai_reply = response.text
+            candidate_models = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-pro']
+            ai_reply = None
+            last_err = None
+            
+            for m in candidate_models:
+                try:
+                    model = genai.GenerativeModel(m)
+                    response = model.generate_content(prompt)
+                    if response and response.text:
+                        ai_reply = response.text
+                        break
+                except Exception as ex:
+                    last_err = ex
+                    continue
+
+            if not ai_reply:
+                raise last_err or Exception("Gagal menghubungi model AI")
             
             send_telegram_message(chat_id, ai_reply)
 
@@ -1834,20 +1848,6 @@ def api_status():
     global last_sync_time
     return jsonify({"last_sync_time": last_sync_time.timestamp()})
 
-@app.route("/api/debug/env")
-def api_debug_env():
-    return jsonify({
-        "telegram_len": len(os.getenv("TELEGRAM_BOT_TOKEN", "")),
-        "gemini_len": len(os.getenv("GEMINI_API_KEY", "")),
-        "global_telegram_len": len(TELEGRAM_BOT_TOKEN),
-        "global_gemini_len": len(GEMINI_API_KEY),
-        "port": os.getenv("PORT", "not-set"),
-        "railway_env": os.getenv("RAILWAY_ENVIRONMENT", "not-set")
-    })
-
-@app.route("/api/debug/env/all")
-def api_debug_env_all():
-    return jsonify(list(os.environ.keys()))
 
 
 
