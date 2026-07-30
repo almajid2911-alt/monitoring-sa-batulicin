@@ -445,6 +445,8 @@ function cleanCoordinates(coordStr) {
 
       })
       .catch(err => console.error("Error fetching dashboard data:", err));
+  }
+
   // ─── Metric Card Drilldown ────────────────────────────────────────────────
   let drilldownTable = null;
   const detailModalElement = document.getElementById("detailModal");

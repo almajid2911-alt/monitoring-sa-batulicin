@@ -1403,10 +1403,49 @@ def call_openrouter_api(prompt):
     raise Exception(f"OpenRouter Error: {last_error}")
 
 
+def generate_manual_summary():
+    dash = load_dashboard_data("", "", "")
+    s = dash["summary"]
+    re_cnt = dash.get("jam_re_chart", {}).get("total", 0)
+    ps_cnt = s.get("total_ps", 0)
+    ps_re_ratio = (ps_cnt / re_cnt * 100) if re_cnt > 0 else 0.0
+
+    sisa_map = {}
+    if "sisa_pivot" in dash and "workzones" in dash["sisa_pivot"]:
+        for wz in dash["sisa_pivot"]["workzones"]:
+            wz_name = wz.get("workzone", "").upper()
+            sisa_map[wz_name] = wz.get("wz_grand_total", 0)
+
+    msg = f"""Provisioning 
+
+INDIHOME
+
+RE Hari ini : {re_cnt}
+PS Hari ini : {ps_cnt}
+PS/RE : {ps_re_ratio:.1f}% (PS/RE)
+
+Potensi : {s.get("total_potensi", 0)}
+Sedang OGP : {s.get("sedang_ogp", 0)}
+OKE Tarik : {s.get("oke_tarik", 0)}
+Belum Dikerjakan : {s.get("belum_dikerjakan", 0)}
+Undispatch : {s.get("undispatch", 0)}
+Tim idle : {s.get("idle_teams_count", 0)}
+
+======
+Sisa Order :
+BLC : {sisa_map.get("BLC", 0)}
+SER : {sisa_map.get("SER", 0)}
+STI : {sisa_map.get("STI", 0)}
+KPL : {sisa_map.get("KPL", 0)}
+PGT : {sisa_map.get("PGT", 0)}
+KIP : {sisa_map.get("KIP", 0)}"""
+    return msg
+
+
 @app.route("/api/telegram/webhook", methods=["POST"])
 def telegram_webhook():
     api_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
-    if not TELEGRAM_BOT_TOKEN or not api_key:
+    if not TELEGRAM_BOT_TOKEN:
         return jsonify({"status": "disabled"}), 200
 
     update = request.get_json()
@@ -1418,12 +1457,17 @@ def telegram_webhook():
         user_text = update["message"]["text"]
         user_name = update["message"]["from"].get("first_name", "Pengguna")
 
-        # 1. Fetch current data
+        cmd = user_text.strip().lower()
+        if cmd.startswith("/prov") or cmd.startswith("/pso") or cmd.startswith("/summary") or cmd.startswith("/start") or cmd.startswith("/help") or cmd == "provisioning":
+            manual_msg = generate_manual_summary()
+            send_telegram_message(chat_id, manual_msg)
+            return "OK", 200
+
+        # Fetch current data for AI
         try:
             dashboard_data = load_dashboard_data("", "", "")
             assurance_data = load_assurance_data("", "", "")
 
-            # Combine key summary numbers to feed to the LLM
             ai_context = {
                 "provisioning": dashboard_data["summary"],
                 "idle_teams": dashboard_data["summary"].get("idle_teams_count", 0),
@@ -1464,8 +1508,9 @@ Pertanyaan pengguna ({user_name}):
             send_telegram_message(chat_id, ai_reply)
 
         except Exception as e:
-            print("AI Error:", e)
-            send_telegram_message(chat_id, f"Maaf {user_name}, saya sedang mengalami kendala teknis dalam memproses datamu: {str(e)}")
+            print("AI Error, falling back to manual summary:", e)
+            manual_msg = generate_manual_summary()
+            send_telegram_message(chat_id, manual_msg)
 
     return "OK", 200
 
