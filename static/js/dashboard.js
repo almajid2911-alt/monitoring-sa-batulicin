@@ -445,11 +445,6 @@ function cleanCoordinates(coordStr) {
 
       })
       .catch(err => console.error("Error fetching dashboard data:", err));
-  }
-
-  // Auto-refresh every 16 minutes
-  setInterval(updateDashboardData, 16 * 60 * 1000);
-
   // ─── Metric Card Drilldown ────────────────────────────────────────────────
   let drilldownTable = null;
   const detailModalElement = document.getElementById("detailModal");
@@ -619,8 +614,31 @@ function cleanCoordinates(coordStr) {
       .catch(err => console.error("Error fetching detail data:", err));
   });
 
+  // ─── Auto Sync (Refresh on Backend Sync) ───────────────────────────────
+  let currentSyncTime = 0;
+  
+  // Ambil initial sync time saat load
+  fetch("/api/status")
+    .then(res => res.json())
+    .then(data => {
+      if (data.last_sync_time) currentSyncTime = data.last_sync_time;
+    })
+    .catch(err => console.error("Error fetching initial status:", err));
 
-  // ─── Sync Button ──────────────────────────────────────────────────────────
+  // Poll status setiap 30 detik untuk mendeteksi perubahan dari n8n
+  setInterval(() => {
+    if (currentSyncTime === 0) return; // Belum init
+    fetch("/api/status")
+      .then(res => res.json())
+      .then(data => {
+        if (data.last_sync_time && data.last_sync_time > currentSyncTime) {
+          console.log("New sync detected, reloading page...");
+          window.location.reload();
+        }
+      })
+      .catch(err => console.error("Error polling status:", err));
+  }, 30000);
+
   const btnSync = document.getElementById("btnSync");
   const syncText = document.getElementById("syncText");
   if (btnSync) {
@@ -630,8 +648,11 @@ function cleanCoordinates(coordStr) {
       fetch("/api/sync", { method: "POST" })
         .then(res => res.json())
         .then(data => {
-          if (data.success) updateDashboardData();
-          else console.error("Sync error:", data.message);
+          if (data.success) {
+            window.location.reload();
+          } else {
+            console.error("Sync error:", data.message);
+          }
         })
         .catch(err => console.error("Sync request failed:", err))
         .finally(() => {

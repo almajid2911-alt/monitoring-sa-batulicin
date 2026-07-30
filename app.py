@@ -2002,12 +2002,20 @@ def api_dashboard_detail():
 
 @app.route("/api/sync", methods=["POST"])
 def api_sync():
+    global last_sync_time
     try:
         c1 = sync_orders()
         c2 = sync_assurance_tickets()
+        last_sync_time = datetime.now()
         return jsonify({"success": True, "message": f"Berhasil sinkronisasi {c1} data Provisioning & {c2} data Assurance"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route("/api/status")
+def api_status():
+    global last_sync_time
+    return jsonify({"last_sync_time": last_sync_time.timestamp()})
+
 
 
 def init_db_migration():
