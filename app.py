@@ -9,7 +9,6 @@ import threading
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
-import google.generativeai as genai
 import requests
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
@@ -1332,14 +1331,10 @@ def index():
 last_sync_time = datetime.now()
 
 
-# ─── TELEGRAM BOT AI AGENT ───────────────────────────────────────────────────
+# ─── TELEGRAM BOT AI AGENT (OPENROUTER) ───────────────────────────────────────
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    
 def send_telegram_message(chat_id, text):
     if not TELEGRAM_BOT_TOKEN:
         return
@@ -1354,42 +1349,54 @@ def send_telegram_message(chat_id, text):
     except Exception as e:
         print(f"Failed to send Telegram message: {e}")
 
-def call_gemini_rest(prompt):
+def call_openrouter_api(prompt):
+    api_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        raise Exception("API Key OpenRouter/Gemini tidak ditemukan. Harap isi OPENROUTER_API_KEY di Railway.")
+
     models_to_try = [
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-pro",
-        "gemini-pro"
+        "meta-llama/llama-3.1-8b-instruct:free",
+        "google/gemma-2-9b-it:free",
+        "mistralai/mistral-7b-instruct:free",
+        "qwen/qwen-2.5-72b-instruct:free",
+        "deepseek/deepseek-r1:free"
     ]
-    
-    last_error_msg = ""
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://monitoring.internetbisnis.biz.id",
+        "X-Title": "SA Batulicin Bot"
+    }
+
+    last_error = ""
     for model_name in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        url = "https://openrouter.ai/api/v1/chat/completions"
         payload = {
-            "contents": [{
-                "parts": [{"text": prompt}]
-            }]
+            "model": model_name,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
         }
         try:
-            res = requests.post(url, json=payload, timeout=20)
+            res = requests.post(url, headers=headers, json=payload, timeout=25)
             data = res.json()
-            if res.status_code == 200 and "candidates" in data and len(data["candidates"]) > 0:
-                parts = data["candidates"][0].get("content", {}).get("parts", [])
-                if parts and "text" in parts[0]:
-                    return parts[0]["text"]
+            if res.status_code == 200 and "choices" in data and len(data["choices"]) > 0:
+                content = data["choices"][0].get("message", {}).get("content", "")
+                if content:
+                    return content
             else:
-                last_error_msg = data.get("error", {}).get("message", res.text)
+                last_error = data.get("error", {}).get("message", res.text)
         except Exception as e:
-            last_error_msg = str(e)
-            
-    raise Exception(f"API Gemini Error: {last_error_msg}")
+            last_error = str(e)
+
+    raise Exception(f"OpenRouter Error: {last_error}")
 
 
 @app.route("/api/telegram/webhook", methods=["POST"])
 def telegram_webhook():
-    if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
+    api_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
+    if not TELEGRAM_BOT_TOKEN or not api_key:
         return jsonify({"status": "disabled"}), 200
 
     update = request.get_json()
@@ -1402,13 +1409,11 @@ def telegram_webhook():
         user_name = update["message"]["from"].get("first_name", "Pengguna")
 
         # 1. Fetch current data
-        # We'll use a broad filter (empty) to give a global snapshot to the AI
         try:
             dashboard_data = load_dashboard_data("", "", "")
             assurance_data = load_assurance_data("", "", "")
 
             # Combine key summary numbers to feed to the LLM
-            # (Limit data to avoid hitting context limits or cluttering the prompt)
             ai_context = {
                 "provisioning": dashboard_data["summary"],
                 "idle_teams": dashboard_data["summary"].get("idle_teams_count", 0),
@@ -1425,7 +1430,6 @@ def telegram_webhook():
                 }
             }
             
-            # Additional details for top teams
             top_teams = ", ".join([f"{t['tim']} ({t['count']})" for t in dashboard_data.get("top_tim_today", [])])
             ai_context["top_tim_hari_ini"] = top_teams
 
@@ -1446,7 +1450,7 @@ Keterangan:
 Pertanyaan pengguna ({user_name}):
 "{user_text}"
 """
-            ai_reply = call_gemini_rest(prompt)
+            ai_reply = call_openrouter_api(prompt)
             send_telegram_message(chat_id, ai_reply)
 
         except Exception as e:
