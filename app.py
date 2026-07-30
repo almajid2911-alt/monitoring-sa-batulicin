@@ -1845,6 +1845,11 @@ def api_debug_env():
         "railway_env": os.getenv("RAILWAY_ENVIRONMENT", "not-set")
     })
 
+@app.route("/api/debug/env/all")
+def api_debug_env_all():
+    return jsonify(list(os.environ.keys()))
+
+
 
 
 
