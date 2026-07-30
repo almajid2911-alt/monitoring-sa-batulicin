@@ -98,6 +98,7 @@ class AssuranceTicket(db.Model):
     reported_date = db.Column(db.String(100))
     customer_type = db.Column(db.String(100))
     guarante_status = db.Column(db.String(100))
+    status_garansi = db.Column(db.String(100))
     description_assignment = db.Column(db.String(255))
     booking_date = db.Column(db.String(100))
     hasil_ukur = db.Column(db.String(100))
@@ -125,6 +126,7 @@ class AssuranceTicket(db.Model):
             "reported_date": self.reported_date,
             "customer_type": self.customer_type,
             "guarante_status": self.guarante_status,
+            "status_garansi": self.status_garansi,
             "description_assignment": self.description_assignment,
             "booking_date": self.booking_date,
             "hasil_ukur": self.hasil_ukur,
@@ -625,6 +627,7 @@ def sync_assurance_tickets() -> int:
             t.reported_date = normalize_text(r.get("REPORTED DATE"))
             t.customer_type = normalize_text(r.get("CUSTOMER TYPE"))
             t.guarante_status = normalize_text(r.get("GUARANTE STATUS"))
+            t.status_garansi = normalize_text(r.get("STATUS GARANSI"))
             t.description_assignment = normalize_text(r.get("DESCRIPTION ASSIGMENT"))
             t.booking_date = normalize_text(r.get("BOOKING DATE"))
             t.hasil_ukur = normalize_text(r.get("HASIL UKUR"))
@@ -728,6 +731,17 @@ def load_assurance_data(sektor: str = "", wilsus: str = "", jenis_tiket: str = "
         s = (summary_str or "").upper()
         return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
 
+    def is_garansi_ticket(r: dict) -> bool:
+        st_g = normalize_upper(r.get("status_garansi"))
+        if st_g and ("GARANSI" in st_g or st_g in {"YES", "TRUE", "1", "Y"}):
+            return True
+        st = normalize_upper(r.get("guarante_status"))
+        if not st:
+            return False
+        if "NOT" in st or "NON" in st or st == "NO":
+            return False
+        return "GARANSI" in st or "GUARANTEE" in st
+
     total_saldo = len(rows)
 
     # Separate rows by Customer Segment
@@ -744,7 +758,7 @@ def load_assurance_data(sektor: str = "", wilsus: str = "", jenis_tiket: str = "
     hvc_platinum_count = sum(1 for r in pl_tsel_rows if "PLATINUM" in normalize_upper(r.get("customer_type")) and not is_sqm_or_unspec(r.get("summary")))
     reguler_count = sum(1 for r in pl_tsel_rows if ("REGULER" in normalize_upper(r.get("customer_type")) or "REGULAR" in normalize_upper(r.get("customer_type"))) and not is_sqm_or_unspec(r.get("summary")))
     
-    garansi_count = sum(1 for r in pl_tsel_rows if "GARANSI" in normalize_upper(r.get("guarante_status")) or "GUARANTEE" in normalize_upper(r.get("guarante_status")))
+    garansi_count = sum(1 for r in pl_tsel_rows if is_garansi_ticket(r))
     osla_count = sum(1 for r in pl_tsel_rows if parse_ttr_val(r.get("ttr")) > 12.0 and not is_sqm_or_unspec(r.get("summary")))
     sqm_count = sum(1 for r in pl_tsel_rows if "SQM" in normalize_upper(r.get("summary")))
     unspec_count = sum(1 for r in pl_tsel_rows if "UNSPEC" in normalize_upper(r.get("summary")) or "UNSPEK" in normalize_upper(r.get("summary")))
@@ -1215,6 +1229,17 @@ def api_assurance_detail():
         s = (summary_str or "").upper()
         return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
 
+    def is_garansi_ticket(r: dict) -> bool:
+        st_g = normalize_upper(r.get("status_garansi"))
+        if st_g and ("GARANSI" in st_g or st_g in {"YES", "TRUE", "1", "Y"}):
+            return True
+        st = normalize_upper(r.get("guarante_status"))
+        if not st:
+            return False
+        if "NOT" in st or "NON" in st or st == "NO":
+            return False
+        return "GARANSI" in st or "GUARANTEE" in st
+
     result = []
     for r in rows:
         cust_type = normalize_upper(r.get("customer_type"))
@@ -1247,7 +1272,7 @@ def api_assurance_detail():
         elif category == "reguler":
             if is_pl_tsel and ("REGULER" in cust_type or "REGULAR" in cust_type) and not is_sqm_or_unspec(summary): result.append(r)
         elif category == "garansi":
-            if is_pl_tsel and ("GARANSI" in garansi_st or "GUARANTEE" in garansi_st): result.append(r)
+            if is_pl_tsel and is_garansi_ticket(r): result.append(r)
         elif category == "osla":
             if is_pl_tsel and ttr_val > 12.0 and not is_sqm_or_unspec(summary): result.append(r)
         elif category == "sqm":
