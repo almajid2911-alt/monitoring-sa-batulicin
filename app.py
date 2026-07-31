@@ -1443,6 +1443,21 @@ KIP : {sisa_map.get("KIP", 0)}"""
     return msg
 
 
+def clean_odp_code(odc_str: str) -> str:
+    if not odc_str or odc_str.strip() in {"-", "", "None"}:
+        return "-"
+    s = odc_str.split('/')[0].strip()
+    return s
+
+
+def is_redaman_good(r: dict) -> bool:
+    hu = normalize_upper(r.get("hasil_ukur"))
+    r_val = abs(parse_redaman_val(r.get("redaman")))
+    if hu == "ONLINE" and (13.0 <= r_val <= 25.0 or (0 < r_val < 25.0)):
+        return True
+    return False
+
+
 def generate_unspec_summary():
     all_tickets = AssuranceTicket.query.all()
     rows = [t.to_dict() for t in all_tickets]
@@ -1462,16 +1477,19 @@ def generate_unspec_summary():
         wz = normalize_text(r.get("workzone") or "KOSONG").upper()
         grouped[wz].append(r)
 
-    lines = []
+    lines = [f"📋 *MONITORING TIKET UNSPEC ({len(unspec_rows)} Tiket)*\n"]
     for wz in sorted(grouped.keys()):
-        lines.append(f"*{wz}*")
+        lines.append(f"🏢 *WORKZONE {wz}*")
         for r in grouped[wz]:
             inc = r.get("incident") or "-"
-            odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
+            raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
+            odc = clean_odp_code(raw_odc)
             srv = r.get("service_no") or "-"
-            lines.append(f"{inc} {odc} {srv}")
+            status_icon = "🟢" if is_redaman_good(r) else "🔴"
+            lines.append(f"{status_icon} `{inc}` • `{odc}` • `{srv}`")
         lines.append("")
 
+    lines.append("Keterangan:\n🟢 Redaman Online (-13 s/d -25 dB) | 🔴 Belum Online / Need Action")
     return "\n".join(lines).strip()
 
 
