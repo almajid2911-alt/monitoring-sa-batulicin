@@ -179,6 +179,11 @@ def is_truthy_text(value: str) -> bool:
     return normalize_text(value) != ""
 
 
+def is_empty_status_m(value: str | None) -> bool:
+    s = normalize_upper(value)
+    return s in {"", "-", "NONE", "EMPTY", "KOSONG"}
+
+
 def parse_sheet_date(value: str) -> str:
     text = normalize_text(value)
     if not text:
@@ -341,7 +346,7 @@ def build_summary(all_rows: list[dict[str, str]], total_ps_rows: list[dict[str, 
             if status_m in {"BELUM DIKERJAKAN", ""} and is_truthy_text(tim) and tim != "-":
                 categories["belum"].append(row)
             
-            if not is_truthy_text(tim) or tim == "-":
+            if (not is_truthy_text(tim) or tim == "-") and is_empty_status_m(status_m):
                 categories["undispatch"].append(row)
 
     def get_breakdown(rows):
@@ -1178,7 +1183,8 @@ def load_dashboard_data(start_date: str, end_date: str, sektor: str = "", jenis_
     undispatch_count = sum(
         1 for r in filtered_rows
         if normalize_upper(r.get("Status")) in {"WORKFAIL", "STARTWORK"}
-        and not is_truthy_text(r.get("TIM", ""))
+        and (not is_truthy_text(r.get("TIM", "")) or r.get("TIM") == "-")
+        and is_empty_status_m(r.get("status morning"))
     )
 
     # Build ps_today_rows:
@@ -1621,7 +1627,12 @@ def api_dashboard_detail():
             and str(r.get("TIM")).strip() != "-"
         ]
     elif category == "undispatch":
-        result = [r for r in filtered_rows if normalize_upper(r.get("Status")) in {"WORKFAIL", "STARTWORK"} and not is_truthy_text(r.get("TIM", ""))]
+        result = [
+            r for r in filtered_rows
+            if normalize_upper(r.get("Status")) in {"WORKFAIL", "STARTWORK"}
+            and (not is_truthy_text(r.get("TIM", "")) or r.get("TIM") == "-")
+            and is_empty_status_m(r.get("status morning"))
+        ]
     elif category == "idle_teams":
         # Logic to identify IDLE teams from Matrix source
         now_utc = datetime.now(timezone.utc)
