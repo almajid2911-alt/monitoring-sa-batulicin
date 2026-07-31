@@ -478,7 +478,7 @@ function cleanCoordinates(coordStr) {
       assurance_saldo: "Total Saldo Tiket Assurance",
       rbs_indibiz: "Tiket Assurance: RBS / INDIBIZ",
       tik_manja: "Tiket Assurance: TIKET MANJA (Customer Assign)",
-      online_redaman: "Tiket Assurance: ONLINE REDAMAN (< -24 dB)",
+      online_redaman: "Tiket Assurance: ONLINE REDAMAN Sesuai Spek (-13 s/d -25 dB)",
       hvc_gold: "Tiket Assurance: PL-TSEL HVC GOLD",
       hvc_diamond: "Tiket Assurance: PL-TSEL HVC DIAMOND",
       hvc_platinum: "Tiket Assurance: PL-TSEL HVC PLATINUM",
