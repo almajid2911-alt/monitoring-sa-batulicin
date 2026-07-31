@@ -1443,6 +1443,38 @@ KIP : {sisa_map.get("KIP", 0)}"""
     return msg
 
 
+def generate_unspec_summary():
+    all_tickets = AssuranceTicket.query.all()
+    rows = [t.to_dict() for t in all_tickets]
+    
+    unspec_rows = [
+        r for r in rows
+        if "UNSPEC" in normalize_upper(r.get("summary"))
+        or "UNSPEK" in normalize_upper(r.get("summary"))
+        or "UNSPEC" in normalize_upper(r.get("customer_type"))
+    ]
+    
+    if not unspec_rows:
+        return "Tidak ada tiket UNSPEC saat ini."
+
+    grouped = defaultdict(list)
+    for r in unspec_rows:
+        wz = normalize_text(r.get("workzone") or "KOSONG").upper()
+        grouped[wz].append(r)
+
+    lines = []
+    for wz in sorted(grouped.keys()):
+        lines.append(f"*{wz}*")
+        for r in grouped[wz]:
+            inc = r.get("incident") or "-"
+            odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
+            srv = r.get("service_no") or "-"
+            lines.append(f"{inc} {odc} {srv}")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 @app.route("/api/telegram/webhook", methods=["POST"])
 def telegram_webhook():
     api_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
@@ -1459,6 +1491,16 @@ def telegram_webhook():
         user_name = update["message"]["from"].get("first_name", "Pengguna")
 
         cmd = user_text.strip().lower()
+        if cmd.startswith("/unspec") or cmd.startswith("/unspek"):
+            unspec_msg = generate_unspec_summary()
+            if len(unspec_msg) > 4000:
+                chunks = [unspec_msg[i:i+4000] for i in range(0, len(unspec_msg), 4000)]
+                for c in chunks:
+                    send_telegram_message(chat_id, c)
+            else:
+                send_telegram_message(chat_id, unspec_msg)
+            return "OK", 200
+
         if cmd.startswith("/prov") or cmd.startswith("/pso") or cmd.startswith("/summary") or cmd.startswith("/start") or cmd.startswith("/help") or cmd == "provisioning":
             manual_msg = generate_manual_summary()
             send_telegram_message(chat_id, manual_msg)
