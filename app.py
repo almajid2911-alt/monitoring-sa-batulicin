@@ -753,7 +753,7 @@ def load_assurance_data(sektor: str = "", wilsus: str = "", jenis_tiket: str = "
 
     rbs_indibiz_count = len(rbs_rows)
     manja_count = sum(1 for r in rows if "CUSTOMER ASSIGN" in normalize_upper(r.get("description_assignment")))
-    online_redaman_count = sum(1 for r in rows if normalize_upper(r.get("hasil_ukur")) == "ONLINE" and (13.0 <= abs(parse_redaman_val(r.get("redaman"))) <= 25.0 or -25.0 <= parse_redaman_val(r.get("redaman")) <= -13.0))
+    online_redaman_count = sum(1 for r in rows if normalize_upper(r.get("hasil_ukur")) == "ONLINE" and (13.0 <= abs(parse_redaman_val(r.get("redaman"))) < 25.0 or -25.0 < parse_redaman_val(r.get("redaman")) <= -13.0))
 
     # PL-TSEL Specific Metrics (excluding SQM & UNSPEC for HVC GOLD, HVC DIAMOND, HVC PLATINUM, REGULER, OSLA)
     hvc_gold_count = sum(1 for r in pl_tsel_rows if "GOLD" in normalize_upper(r.get("customer_type")) and not is_sqm_or_unspec(r.get("summary")))
@@ -1843,7 +1843,7 @@ def api_assurance_detail():
         elif category == "tik_manja":
             if "CUSTOMER ASSIGN" in desc_assign: result.append(r)
         elif category == "online_redaman":
-            if hasil_uk == "ONLINE" and (13.0 <= abs(redaman_val) <= 25.0 or -25.0 <= redaman_val <= -13.0): result.append(r)
+            if hasil_uk == "ONLINE" and (13.0 <= abs(redaman_val) < 25.0 or -25.0 < redaman_val <= -13.0): result.append(r)
         elif category == "hvc_gold":
             if is_pl_tsel and "GOLD" in cust_type and not is_sqm_or_unspec(summary): result.append(r)
         elif category == "hvc_diamond":
