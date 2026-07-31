@@ -319,8 +319,8 @@ def build_summary(all_rows: list[dict[str, str]], total_ps_rows: list[dict[str, 
     for row in all_rows:
         st_up = normalize_upper(row.get("Status"))
         sm_up = normalize_upper(row.get("status morning"))
-        # Keywords for Potensi (including space variations and typos for robustness)
-        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP", "SETTING", "VALDAT", "QC", "VALIDASI", "POTENSI"}
+        # Keywords for Potensi (strictly Actcomp, Valstart, Valcomp and variations)
+        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
         is_potensi_st = any(v in st_up for v in potensi_keywords)
         is_potensi_sm = any(v in sm_up for v in potensi_keywords)
         
@@ -523,34 +523,31 @@ def sync_orders():
         parsed_dispatch = parse_sheet_date(row_dict.get("DISPATCH", ""))
 
         if existing:
-            existing_status_score = preferred_statuses.get(normalize_upper(existing.status), -1)
-            # update if new status is higher or equal
-            if new_status_score >= existing_status_score:
-                update_if_changed(existing, "tim", normalize_text(row_dict.get("TIM") or row_dict.get("tim")))
-                update_if_changed(existing, "workorder", normalize_text(row_dict.get("Workorder")))
-                update_if_changed(existing, "odc", normalize_text(row_dict.get("ODC")))
-                update_if_changed(existing, "status", normalize_text(row_dict.get("Status")))
-                update_if_changed(existing, "status_morning", normalize_text(row_dict.get("status morning") or row_dict.get("Status Morning") or row_dict.get("status_morning")))
-                update_if_changed(existing, "catatan", normalize_text(row_dict.get("Catatan")))
-                update_if_changed(existing, "jam_re", normalize_text(row_dict.get("Jam re")))
-                update_if_changed(existing, "jam_ps", normalize_text(row_dict.get("Jam PS")))
-                update_if_changed(existing, "status_date_raw", normalize_text(row_dict.get("Status Date")))
-                update_if_changed(existing, "status_date_parsed", parsed_date)
-                update_if_changed(existing, "date_created_raw", normalize_text(date_created_val))
-                update_if_changed(existing, "date_created_parsed", parsed_created_date)
-                update_if_changed(existing, "date_modified_raw", normalize_text(date_modified_val))
-                update_if_changed(existing, "date_modified_parsed", parsed_modified_date)
-                update_if_changed(existing, "crm_order_type", normalize_text(row_dict.get("CRM Order Type")))
-                update_if_changed(existing, "product_name", normalize_text(row_dict.get("Product Name")))
-                update_if_changed(existing, "tgl_ps", normalize_text(row_dict.get("tgl ps")))
-                update_if_changed(existing, "tgl_ps_parsed", parsed_tgl_ps)
-                update_if_changed(existing, "workzone", normalize_text(row_dict.get("Workzone")))
-                update_if_changed(existing, "dispatch_date", parsed_dispatch)
-                update_if_changed(existing, "kordinat", clean_coordinates(normalize_text(row_dict.get("KORDINAT") or row_dict.get("kordinat"))))
-                update_if_changed(existing, "wilsus", normalize_text(row_dict.get("Wilsus") or row_dict.get("wilsus")))
-                update_if_changed(existing, "eskal_daman", normalize_text(row_dict.get("Eskal daman") or row_dict.get("eskal_daman")))
-                update_if_changed(existing, "validasi", normalize_text(row_dict.get("VALIDASI") or row_dict.get("validasi")))
-                update_if_changed(existing, "jenis_order", normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper())
+            update_if_changed(existing, "tim", normalize_text(row_dict.get("TIM") or row_dict.get("tim")))
+            update_if_changed(existing, "workorder", normalize_text(row_dict.get("Workorder")))
+            update_if_changed(existing, "odc", normalize_text(row_dict.get("ODC")))
+            update_if_changed(existing, "status", normalize_text(row_dict.get("Status")))
+            update_if_changed(existing, "status_morning", normalize_text(row_dict.get("status morning") or row_dict.get("Status Morning") or row_dict.get("status_morning")))
+            update_if_changed(existing, "catatan", normalize_text(row_dict.get("Catatan")))
+            update_if_changed(existing, "jam_re", normalize_text(row_dict.get("Jam re")))
+            update_if_changed(existing, "jam_ps", normalize_text(row_dict.get("Jam PS")))
+            update_if_changed(existing, "status_date_raw", normalize_text(row_dict.get("Status Date")))
+            update_if_changed(existing, "status_date_parsed", parsed_date)
+            update_if_changed(existing, "date_created_raw", normalize_text(date_created_val))
+            update_if_changed(existing, "date_created_parsed", parsed_created_date)
+            update_if_changed(existing, "date_modified_raw", normalize_text(date_modified_val))
+            update_if_changed(existing, "date_modified_parsed", parsed_modified_date)
+            update_if_changed(existing, "crm_order_type", normalize_text(row_dict.get("CRM Order Type")))
+            update_if_changed(existing, "product_name", normalize_text(row_dict.get("Product Name")))
+            update_if_changed(existing, "tgl_ps", normalize_text(row_dict.get("tgl ps")))
+            update_if_changed(existing, "tgl_ps_parsed", parsed_tgl_ps)
+            update_if_changed(existing, "workzone", normalize_text(row_dict.get("Workzone")))
+            update_if_changed(existing, "dispatch_date", parsed_dispatch)
+            update_if_changed(existing, "kordinat", clean_coordinates(normalize_text(row_dict.get("KORDINAT") or row_dict.get("kordinat"))))
+            update_if_changed(existing, "wilsus", normalize_text(row_dict.get("Wilsus") or row_dict.get("wilsus")))
+            update_if_changed(existing, "eskal_daman", normalize_text(row_dict.get("Eskal daman") or row_dict.get("eskal_daman")))
+            update_if_changed(existing, "validasi", normalize_text(row_dict.get("VALIDASI") or row_dict.get("validasi")))
+            update_if_changed(existing, "jenis_order", normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper())
         else:
             new_order = Order(
                 track_order=tr_order,
@@ -995,7 +992,7 @@ def load_dashboard_data(start_date: str, end_date: str, sektor: str = "", jenis_
         dispatch_date = row.get("dispatch_date")
 
         is_today = (dispatch_date == today)
-        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP", "SETTING", "VALDAT", "QC", "VALIDASI", "POTENSI"}
+        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
         is_potensi_st = any(v in status_up for v in potensi_keywords)
         is_potensi_sm = any(v in status_morning_up for v in potensi_keywords)
         is_potensi = is_potensi_st or is_potensi_sm
@@ -1249,7 +1246,7 @@ def load_dashboard_data(start_date: str, end_date: str, sektor: str = "", jenis_
     sisa_pivot_data = build_sisa_pivot(matrix_source_rows)
 
     detail_potensi_table = []
-    potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP", "SETTING", "VALDAT", "QC", "VALIDASI", "POTENSI"}
+    potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
 
     for row in matrix_source_rows:
         status_up = normalize_upper(row.get("Status"))
@@ -1599,7 +1596,7 @@ def api_dashboard_detail():
         result = [r for r in ps_today_rows if normalize_upper(r.get("Status")) == "COMPWORK"]
     elif category == "total_potensi":
         result = []
-        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP", "SETTING", "VALDAT", "QC", "VALIDASI", "POTENSI"}
+        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
         query_pot = Order.query
         if jenis_order:
             query_pot = query_pot.filter(db.func.upper(Order.jenis_order) == jenis_order.upper())
