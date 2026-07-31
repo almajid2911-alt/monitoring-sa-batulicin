@@ -937,16 +937,11 @@ def load_dashboard_data(start_date: str, end_date: str, sektor: str = "", jenis_
     now_wita = now_utc + timedelta(hours=8)
     default_today_wita = now_wita.strftime("%Y-%m-%d")
 
-    # If end_date filter is present, use it; otherwise fallback to max date in DB if today has 0 rows
+    # If end_date filter is present, use it; otherwise default to current WITA date
     if end_date:
         today = end_date
     else:
-        has_today = Order.query.filter(Order.status_date_parsed == default_today_wita).first()
-        if not has_today:
-            max_d = db.session.query(db.func.max(Order.status_date_parsed)).scalar()
-            today = max_d or default_today_wita
-        else:
-            today = default_today_wita
+        today = default_today_wita
 
     today_month = today[:7]
     
