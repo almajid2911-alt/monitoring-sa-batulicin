@@ -148,21 +148,22 @@
       .then(res => res.json())
       .then(data => {
         // Update metric cards
-        const u = (id, val, bd) => {
+        const u = (id, val, bd, containerId) => {
           const el = document.getElementById(id);
           if (el) el.textContent = val;
-          const bEl = document.getElementById(id.replace("metric-", "") + "-breakdown-container");
+          const targetContainerId = containerId || (id.replace("metric-", "") + "-breakdown-container");
+          const bEl = document.getElementById(targetContainerId);
           if (bEl && bd) {
             bEl.innerHTML = bd.map(b => `<span class="badge-soft-summary">*${b.product} : ${b.count}</span>`).join("");
           }
         };
 
-        u("metric-total-ps", data.summary.total_ps, data.summary.ps_breakdown);
-        u("metric-total-potensi", data.summary.total_potensi, data.summary.potensi_breakdown);
-        u("metric-sedang-ogp", data.summary.sedang_ogp, data.summary.ogp_breakdown);
-        u("metric-oke-tarik", data.summary.oke_tarik, data.summary.oke_breakdown);
-        u("metric-belum-dikerjakan", data.summary.belum_dikerjakan, data.summary.belum_breakdown);
-        u("metric-undispatch", data.summary.undispatch, data.summary.undispatch_breakdown);
+        u("metric-total-ps", data.summary.total_ps, data.summary.ps_breakdown, "ps-breakdown-container");
+        u("metric-total-potensi", data.summary.total_potensi, data.summary.potensi_breakdown, "potensi-breakdown-container");
+        u("metric-sedang-ogp", data.summary.sedang_ogp, data.summary.ogp_breakdown, "ogp-breakdown-container");
+        u("metric-oke-tarik", data.summary.oke_tarik, data.summary.oke_breakdown, "oke-breakdown-container");
+        u("metric-belum-dikerjakan", data.summary.belum_dikerjakan, data.summary.belum_breakdown, "belum-breakdown-container");
+        u("metric-undispatch", data.summary.undispatch, data.summary.undispatch_breakdown, "undispatch-breakdown-container");
 
         // Update Failwa
         const failwaEl = document.getElementById("metric-failwa");

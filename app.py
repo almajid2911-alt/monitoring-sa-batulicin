@@ -320,11 +320,11 @@ def build_summary(all_rows: list[dict[str, str]], total_ps_rows: list[dict[str, 
         st_up = normalize_upper(row.get("Status"))
         sm_up = normalize_upper(row.get("status morning"))
         # Keywords for Potensi (including space variations and typos for robustness)
-        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
+        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP", "SETTING", "VALDAT", "QC", "VALIDASI", "POTENSI"}
         is_potensi_st = any(v in st_up for v in potensi_keywords)
-        is_setting_sm = "SETTING" in sm_up
+        is_potensi_sm = any(v in sm_up for v in potensi_keywords)
         
-        if is_potensi_st or is_setting_sm:
+        if is_potensi_st or is_potensi_sm:
             categories["potensi"].append(row)
         
         if match_status_morning(row, "SEDANG DIKERJAKAN"):
@@ -995,11 +995,10 @@ def load_dashboard_data(start_date: str, end_date: str, sektor: str = "", jenis_
         dispatch_date = row.get("dispatch_date")
 
         is_today = (dispatch_date == today)
-        # Robust check for status variations
-        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
+        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP", "SETTING", "VALDAT", "QC", "VALIDASI", "POTENSI"}
         is_potensi_st = any(v in status_up for v in potensi_keywords)
-        is_setting_sm = "SETTING" in status_morning_up
-        is_potensi = is_potensi_st or is_setting_sm
+        is_potensi_sm = any(v in status_morning_up for v in potensi_keywords)
+        is_potensi = is_potensi_st or is_potensi_sm
 
         # 1. Skip WAPPR only if it's NOT a Potensi row (Potensi are usually WAPPR initially)
         if status_up == "WAPPR" and not is_potensi:
@@ -1250,12 +1249,16 @@ def load_dashboard_data(start_date: str, end_date: str, sektor: str = "", jenis_
     sisa_pivot_data = build_sisa_pivot(matrix_source_rows)
 
     detail_potensi_table = []
+    potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP", "SETTING", "VALDAT", "QC", "VALIDASI", "POTENSI"}
 
-    for row in filtered_rows:
+    for row in matrix_source_rows:
         status_up = normalize_upper(row.get("Status"))
         status_morning_up = normalize_upper(row.get("status morning"))
 
-        if status_up in {"ACTCOMP", "VALSTART"} or status_morning_up == "PROSES SETTING":
+        is_potensi_st = any(v in status_up for v in potensi_keywords)
+        is_potensi_sm = any(v in status_morning_up for v in potensi_keywords)
+
+        if is_potensi_st or is_potensi_sm:
             detail_potensi_table.append({
                 "workorder": row.get("Workorder", "-"),
                 "track_order": row.get("track_order", "-"),
@@ -1596,11 +1599,17 @@ def api_dashboard_detail():
         result = [r for r in ps_today_rows if normalize_upper(r.get("Status")) == "COMPWORK"]
     elif category == "total_potensi":
         result = []
-        for r in filtered_rows:
+        potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP", "SETTING", "VALDAT", "QC", "VALIDASI", "POTENSI"}
+        query_pot = Order.query
+        if jenis_order:
+            query_pot = query_pot.filter(db.func.upper(Order.jenis_order) == jenis_order.upper())
+        pot_rows = [o.to_dict() for o in query_pot.all()]
+        if allowed_wz:
+            pot_rows = [r for r in pot_rows if normalize_upper(r.get("workzone")) in allowed_wz]
+        for r in pot_rows:
             st_up = normalize_upper(r.get("Status"))
             sm_up = normalize_upper(r.get("status morning"))
-            potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP"}
-            if any(v in st_up for v in potensi_keywords) or "SETTING" in sm_up:
+            if any(v in st_up for v in potensi_keywords) or any(v in sm_up for v in potensi_keywords):
                 result.append(r)
     elif category == "sedang_ogp":
         result = [r for r in filtered_rows if normalize_upper(r.get("status morning")) == "SEDANG DIKERJAKAN"]
