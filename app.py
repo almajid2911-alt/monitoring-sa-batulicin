@@ -1346,7 +1346,14 @@ def send_telegram_message(chat_id, text):
         "parse_mode": "Markdown"
     }
     try:
-        requests.post(url, json=payload, timeout=10)
+        res = requests.post(url, json=payload, timeout=10)
+        if res.status_code != 200:
+            # Fallback without parse_mode if Markdown parsing failed
+            payload_plain = {
+                "chat_id": chat_id,
+                "text": text
+            }
+            requests.post(url, json=payload_plain, timeout=10)
     except Exception as e:
         print(f"Failed to send Telegram message: {e}")
 
@@ -1453,7 +1460,7 @@ def clean_odp_code(odc_str: str) -> str:
 def is_redaman_good(r: dict) -> bool:
     hu = normalize_upper(r.get("hasil_ukur"))
     r_val = abs(parse_redaman_val(r.get("redaman")))
-    if hu == "ONLINE" and (13.0 <= r_val <= 25.0 or (0 < r_val < 25.0)):
+    if hu == "ONLINE" and (13.0 <= r_val <= 24.0 or (0 < r_val <= 24.0)):
         return True
     return False
 
@@ -1489,7 +1496,7 @@ def generate_unspec_summary():
             lines.append(f"{status_icon} `{inc}` • `{odc}` • `{srv}`")
         lines.append("")
 
-    lines.append("Keterangan:\n🟢 Redaman Online (-13 s/d -25 dB) | 🔴 Belum Online / Need Action")
+    lines.append("Keterangan:\n🟢 Redaman Online (max -24 dB) | 🔴 Redaman > -24 dB / Need Action")
     return "\n".join(lines).strip()
 
 
