@@ -1570,6 +1570,42 @@ def generate_ttr_mepet_summary():
     return "\n".join(lines).strip()
 
 
+def generate_online_redaman_summary():
+    all_tickets = AssuranceTicket.query.all()
+    rows = [t.to_dict() for t in all_tickets]
+    
+    online_rows = []
+    for r in rows:
+        hu = normalize_upper(r.get("hasil_ukur"))
+        r_val = parse_redaman_val(r.get("redaman"))
+        r_abs = abs(r_val)
+        if hu == "ONLINE" and (13.0 <= r_abs <= 24.0 or (0 < r_abs <= 24.0)):
+            online_rows.append((r, r_val))
+
+    if not online_rows:
+        return "Tidak ada tiket dengan Redaman Online (max -24 dB) saat ini."
+
+    grouped = defaultdict(list)
+    for r, r_val in online_rows:
+        wz = normalize_text(r.get("workzone") or "KOSONG").upper()
+        grouped[wz].append((r, r_val))
+
+    lines = [f"🟢 *MONITORING TIKET REDAMAN ONLINE ({len(online_rows)} Tiket)*\n"]
+    for wz in sorted(grouped.keys()):
+        lines.append(f"🏢 *WORKZONE {wz}*")
+        for r, r_val in grouped[wz]:
+            inc = r.get("incident") or "-"
+            srv = r.get("service_no") or "-"
+            raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
+            odc = clean_odp_code(raw_odc)
+            hu = (r.get("hasil_ukur") or "ONLINE").upper()
+            r_str = f"-{abs(r_val):.2f}" if r_val != 0 else "-"
+            lines.append(f"`{inc}` • `{srv}` • `{odc}` • *{hu}* `{r_str}`")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 @app.route("/api/telegram/webhook", methods=["POST"])
 def telegram_webhook():
     api_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
@@ -1586,6 +1622,20 @@ def telegram_webhook():
         user_name = update["message"]["from"].get("first_name", "Pengguna")
 
         cmd = user_text.strip().lower()
+        if cmd.startswith("/online") or cmd.startswith("/redaman"):
+            try:
+                online_msg = generate_online_redaman_summary()
+                if len(online_msg) > 4000:
+                    chunks = [online_msg[i:i+4000] for i in range(0, len(online_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, online_msg)
+            except Exception as ex:
+                print(f"Error in /online command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /online: {str(ex)}")
+            return "OK", 200
+
         if cmd.startswith("/ttr"):
             try:
                 ttr_msg = generate_ttr_mepet_summary()
