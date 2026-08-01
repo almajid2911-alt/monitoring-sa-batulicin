@@ -1614,16 +1614,29 @@ def generate_gamas_summary():
     if not gamas_rows:
         return "Tidak ada tiket GAMAS saat ini."
 
-    grouped = defaultdict(list)
+    odp_counts = defaultdict(int)
+    grouped_wz = defaultdict(list)
+
     for r in gamas_rows:
         wz = normalize_text(r.get("workzone") or "KOSONG").upper()
-        grouped[wz].append(r)
+        raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
+        odc = clean_odp_code(raw_odc)
+        odp_counts[odc] += 1
+        grouped_wz[wz].append(r)
 
     lines = [f"🚨 *MONITORING TIKET GAMAS ({len(gamas_rows)} Tiket)*\n"]
-    for wz in sorted(grouped.keys()):
+    lines.append("📊 *RINGKASAN SEBARAN PER ODP:*")
+    
+    sorted_odp = sorted(odp_counts.items(), key=lambda x: (-x[1], x[0]))
+    for odp, count in sorted_odp:
+        lines.append(f"• `{odp}` : *{count} Tiket*")
+
+    lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
+
+    for wz in sorted(grouped_wz.keys()):
         lines.append(f"🏢 *WORKZONE {wz}*")
         sorted_rows = sorted(
-            grouped[wz],
+            grouped_wz[wz],
             key=lambda r: clean_odp_code(r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-")
         )
         for r in sorted_rows:
