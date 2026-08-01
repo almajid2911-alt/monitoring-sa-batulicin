@@ -756,6 +756,8 @@ def load_assurance_data(sektor: str = "", wilsus: str = "", jenis_tiket: str = "
         return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
 
     def is_garansi_ticket(r: dict) -> bool:
+        if is_sqm_or_unspec(r.get("summary")) or is_sqm_or_unspec(r.get("customer_type")) or is_sqm_or_unspec(r.get("jenis_tiket")):
+            return False
         st_g = normalize_upper(r.get("status_garansi"))
         if st_g and ("GARANSI" in st_g or st_g in {"YES", "TRUE", "1", "Y"}):
             return True
@@ -1904,6 +1906,8 @@ def api_assurance_detail():
         return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
 
     def is_garansi_ticket(r: dict) -> bool:
+        if is_sqm_or_unspec(r.get("summary")) or is_sqm_or_unspec(r.get("customer_type")) or is_sqm_or_unspec(r.get("jenis_tiket")):
+            return False
         st_g = normalize_upper(r.get("status_garansi"))
         if st_g and ("GARANSI" in st_g or st_g in {"YES", "TRUE", "1", "Y"}):
             return True
