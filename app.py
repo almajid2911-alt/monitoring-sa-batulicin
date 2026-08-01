@@ -1444,12 +1444,12 @@ def call_openrouter_api(prompt):
 
 def get_order_category_summary(r: dict) -> str:
     jo = normalize_upper(r.get("jenis_order") or get_product_name_normalized(r) or "")
-    crm = normalize_upper(r.get("crm_order_type") or "")
     pname = normalize_upper(r.get("product_name") or "")
+    tr = normalize_upper(r.get("track_order") or "")
     
     if "INDIBIZ" in jo or "INDIBIZ" in pname:
         return "INDIBIZ"
-    elif any(k in jo or k in crm or k in pname for k in ["TIF", "VULA", "PDA"]):
+    elif jo in ["TIF", "VULA", "TIF/VULA"] or tr.startswith("TIF") or tr.startswith("VULA") or "VULA" in jo or "VULA" in pname:
         return "TIF / VULA"
     else:
         return "INDIHOME"
