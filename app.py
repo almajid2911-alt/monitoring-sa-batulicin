@@ -46,6 +46,7 @@ class Order(db.Model):
     eskal_daman = db.Column(db.String(255))
     validasi = db.Column(db.String(100))
     jenis_order = db.Column(db.String(100))
+    service_no = db.Column(db.String(100))
 
     def to_dict(self):
         return {
@@ -74,7 +75,8 @@ class Order(db.Model):
             "wilsus": self.wilsus,
             "eskal_daman": self.eskal_daman,
             "validasi": self.validasi,
-            "jenis_order": self.jenis_order or ""
+            "jenis_order": self.jenis_order or "",
+            "service_no": self.service_no or ""
         }
 
 
@@ -551,8 +553,9 @@ def sync_orders():
             update_if_changed(existing, "kordinat", clean_coordinates(normalize_text(row_dict.get("KORDINAT") or row_dict.get("kordinat"))))
             update_if_changed(existing, "wilsus", normalize_text(row_dict.get("Wilsus") or row_dict.get("wilsus")))
             update_if_changed(existing, "eskal_daman", normalize_text(row_dict.get("Eskal daman") or row_dict.get("eskal_daman")))
-            update_if_changed(existing, "validasi", normalize_text(row_dict.get("VALIDASI") or row_dict.get("validasi")))
+            update_if_changed(existing, "validasi", normalize_text(row_dict.get("cek qc") or row_dict.get("VALIDASI") or row_dict.get("validasi")))
             update_if_changed(existing, "jenis_order", normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper())
+            update_if_changed(existing, "service_no", normalize_text(row_dict.get("Service No.") or row_dict.get("Service No") or row_dict.get("service_no")))
         else:
             new_order = Order(
                 track_order=tr_order,
@@ -580,8 +583,9 @@ def sync_orders():
                 kordinat=clean_coordinates(normalize_text(row_dict.get("KORDINAT") or row_dict.get("kordinat"))),
                 wilsus=normalize_text(row_dict.get("Wilsus") or row_dict.get("wilsus")),
                 eskal_daman=normalize_text(row_dict.get("Eskal daman") or row_dict.get("eskal_daman")),
-                validasi=normalize_text(row_dict.get("VALIDASI") or row_dict.get("validasi")),
-                jenis_order=normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper()
+                validasi=normalize_text(row_dict.get("cek qc") or row_dict.get("VALIDASI") or row_dict.get("validasi")),
+                jenis_order=normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper(),
+                service_no=normalize_text(row_dict.get("Service No.") or row_dict.get("Service No") or row_dict.get("service_no"))
             )
             db.session.add(new_order)
             existing_orders[tr_order] = new_order
@@ -1701,12 +1705,15 @@ def generate_psb_sore_summary() -> str:
 
     lines.append(f"🟦 *ORDER POTENSI ({len(potensi_rows)} Order)*")
     if potensi_rows:
-        sorted_potensi = sorted(potensi_rows, key=lambda x: (normalize_upper(x.get("workzone")), x.get("workorder") or x.get("track_order") or ""))
+        sorted_potensi = sorted(potensi_rows, key=lambda x: (normalize_upper(x.get("workzone")), x.get("Workorder") or x.get("track_order") or ""))
         for r in sorted_potensi:
-            wo = r.get("workorder") or r.get("Workorder") or r.get("track_order") or "-"
+            jo = r.get("jenis_order") or get_product_name_normalized(r) or "INDIHOME"
+            srv = r.get("service_no") or r.get("Service No.") or "-"
             tim = r.get("TIM") or r.get("tim") or "-"
-            ket = r.get("eskal_daman") or r.get("keterangan_eskalasi") or r.get("keterangan") or r.get("status morning") or r.get("Status") or "-"
-            lines.append(f"• `{wo}` • `{tim}` • `{ket}`")
+            wo = r.get("Workorder") or r.get("workorder") or r.get("track_order") or "-"
+            qc = r.get("validasi") or r.get("cek qc") or "-"
+            eskal = r.get("eskal_daman") or r.get("Eskal daman") or "-"
+            lines.append(f"• `{jo}` • `{srv}` • `{tim}` • `{wo}` • `{qc}` • `{eskal}`")
     else:
         lines.append("Tidak ada order Potensi saat ini.")
 
