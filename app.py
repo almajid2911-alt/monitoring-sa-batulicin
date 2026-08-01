@@ -1692,9 +1692,8 @@ def generate_psb_sore_summary() -> str:
         sorted_ogp = sorted(ogp_rows, key=lambda x: (normalize_upper(x.get("workzone")), x.get("track_order") or ""))
         for r in sorted_ogp:
             tr = r.get("track_order") or r.get("SC Order No/Track ID/CSRM No") or "-"
-            wz = normalize_text(r.get("workzone") or "KOSONG").upper()
             tim = r.get("TIM") or r.get("tim") or "-"
-            lines.append(f"• `{tr}` • `{wz}` • `{tim}`")
+            lines.append(f"• `{tr}` • `{tim}`")
     else:
         lines.append("Tidak ada order Sedang OGP saat ini.")
 
@@ -1702,13 +1701,12 @@ def generate_psb_sore_summary() -> str:
 
     lines.append(f"🟦 *ORDER POTENSI ({len(potensi_rows)} Order)*")
     if potensi_rows:
-        sorted_potensi = sorted(potensi_rows, key=lambda x: (normalize_upper(x.get("workzone")), x.get("track_order") or ""))
+        sorted_potensi = sorted(potensi_rows, key=lambda x: (normalize_upper(x.get("workzone")), x.get("workorder") or x.get("track_order") or ""))
         for r in sorted_potensi:
-            tr = r.get("track_order") or r.get("SC Order No/Track ID/CSRM No") or "-"
-            wz = normalize_text(r.get("workzone") or "KOSONG").upper()
+            wo = r.get("workorder") or r.get("Workorder") or r.get("track_order") or "-"
             tim = r.get("TIM") or r.get("tim") or "-"
-            ket = r.get("keterangan_eskalasi") or r.get("keterangan") or r.get("status morning") or r.get("Status") or "-"
-            lines.append(f"• `{tr}` • `{wz}` • `{tim}` • `{ket}`")
+            ket = r.get("eskal_daman") or r.get("keterangan_eskalasi") or r.get("keterangan") or r.get("status morning") or r.get("Status") or "-"
+            lines.append(f"• `{wo}` • `{tim}` • `{ket}`")
     else:
         lines.append("Tidak ada order Potensi saat ini.")
 
