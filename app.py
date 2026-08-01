@@ -2332,6 +2332,13 @@ def init_db_migration():
                 cursor.execute("ALTER TABLE assurance_ticket ADD COLUMN status_garansi VARCHAR(100)")
                 conn.commit()
                 print("Migrated assurance_ticket table with status_garansi column")
+
+            cursor.execute("PRAGMA table_info('order')")
+            order_cols = [info[1] for info in cursor.fetchall()]
+            if "service_no" not in order_cols:
+                cursor.execute('ALTER TABLE "order" ADD COLUMN service_no VARCHAR(100)')
+                conn.commit()
+                print("Migrated order table with service_no column")
         except Exception as e:
             print("DB Migration Note:", e)
 
