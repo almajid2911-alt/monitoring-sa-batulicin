@@ -1527,6 +1527,49 @@ def generate_unspec_summary():
     return "\n".join(lines).strip()
 
 
+def is_sqm_or_unspec(summary_str: str) -> bool:
+    s = (summary_str or "").upper()
+    return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
+
+
+def generate_ttr_mepet_summary():
+    all_tickets = AssuranceTicket.query.all()
+    rows = [t.to_dict() for t in all_tickets]
+    
+    ttr_rows = []
+    for r in rows:
+        seg = normalize_upper(r.get("customer_segment"))
+        ctype = normalize_upper(r.get("customer_type"))
+        ttr_val = parse_ttr_val(r.get("ttr"))
+        
+        if seg == "PL-TSEL" and "GOLD" in ctype:
+            if 9.0 <= ttr_val <= 12.0:
+                if not is_sqm_or_unspec(r.get("summary")) and not is_gamas_ticket(r):
+                    ttr_rows.append((r, ttr_val))
+
+    if not ttr_rows:
+        return "Tidak ada tiket HVC Gold dengan TTR mepet (9-12 jam) saat ini."
+
+    grouped = defaultdict(list)
+    for r, ttr_val in ttr_rows:
+        wz = normalize_text(r.get("workzone") or "KOSONG").upper()
+        grouped[wz].append((r, ttr_val))
+
+    lines = [f"⚠️ *MONITORING TTR MEPET 9-12 JAM ({len(ttr_rows)} Tiket)*\n"]
+    for wz in sorted(grouped.keys()):
+        lines.append(f"🏢 *WORKZONE {wz}*")
+        for r, ttr_val in grouped[wz]:
+            inc = r.get("incident") or "-"
+            raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
+            odc = clean_odp_code(raw_odc)
+            tim = r.get("tim") or r.get("tim_kawan") or r.get("tim_insera") or "-"
+            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+            lines.append(f"`{inc}` • `{odc}` • `{tim}` • `{ttr_str} jam`")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 @app.route("/api/telegram/webhook", methods=["POST"])
 def telegram_webhook():
     api_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
@@ -1543,6 +1586,20 @@ def telegram_webhook():
         user_name = update["message"]["from"].get("first_name", "Pengguna")
 
         cmd = user_text.strip().lower()
+        if cmd.startswith("/ttr"):
+            try:
+                ttr_msg = generate_ttr_mepet_summary()
+                if len(ttr_msg) > 4000:
+                    chunks = [ttr_msg[i:i+4000] for i in range(0, len(ttr_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, ttr_msg)
+            except Exception as ex:
+                print(f"Error in /ttr command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /ttr: {str(ex)}")
+            return "OK", 200
+
         if cmd.startswith("/unspec") or cmd.startswith("/unspek"):
             try:
                 unspec_msg = generate_unspec_summary()
