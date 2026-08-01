@@ -1606,6 +1606,24 @@ def generate_online_redaman_summary():
     return "\n".join(lines).strip()
 
 
+def generate_help_guide():
+    return """🤖 *PANDUAN FITUR & DAFTAR COMMAND BOT MONITORING*
+
+📌 *COMMAND ASSURANCE (TIKET GANGGUAN)*
+🟢 `/online` : Cek daftar tiket Redaman Online (max -24 dB) per Workzone
+⚠️ `/ttr` : Cek tiket HVC Gold dengan TTR mepet (range 9 - 12 jam) per Workzone
+📋 `/unspec` : Cek daftar tiket UNSPEC (PL-TSEL Unspecified) per Workzone
+
+📌 *COMMAND PROVISIONING (PASANG BARU)*
+📊 `/prov` atau `/pso` atau `/summary` : Cek Summary Laporan Provisioning & Sisa Order per Workzone
+
+💬 *BOT INTERAKTIF*
+Anda juga bisa bertanya langsung menggunakan bahasa alami:
+• _"Berapa total PS hari ini?"_
+• _"Berapa tiket manja yang aktif?"_
+• _"Tim mana PS terbanyak hari ini?"_"""
+
+
 @app.route("/api/telegram/webhook", methods=["POST"])
 def telegram_webhook():
     api_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
@@ -1622,6 +1640,11 @@ def telegram_webhook():
         user_name = update["message"]["from"].get("first_name", "Pengguna")
 
         cmd = user_text.strip().lower()
+        if cmd in {"/start", "/help", "help", "menu", "petunjuk", "command", "fitur", "info"} or cmd.startswith("/help") or cmd.startswith("/start"):
+            help_msg = generate_help_guide()
+            send_telegram_message(chat_id, help_msg)
+            return "OK", 200
+
         if cmd.startswith("/online") or cmd.startswith("/redaman"):
             try:
                 online_msg = generate_online_redaman_summary()
@@ -1664,7 +1687,7 @@ def telegram_webhook():
                 send_telegram_message(chat_id, f"⚠️ Gagal memproses /unspec: {str(ex)}")
             return "OK", 200
 
-        if cmd.startswith("/prov") or cmd.startswith("/pso") or cmd.startswith("/summary") or cmd.startswith("/start") or cmd.startswith("/help") or cmd == "provisioning":
+        if cmd.startswith("/prov") or cmd.startswith("/pso") or cmd.startswith("/summary") or cmd == "provisioning":
             manual_msg = generate_manual_summary()
             send_telegram_message(chat_id, manual_msg)
             return "OK", 200
@@ -1699,6 +1722,11 @@ def telegram_webhook():
 Kamu adalah "Antigravity Bot", asisten AI profesional untuk tim teknisi SA Batulicin. 
 Tugasmu adalah menjawab pertanyaan pengguna tentang kondisi pekerjaan dan tiket berdasarkan data realtime dari database.
 Jawab dengan ramah, informatif, dan profesional dalam bahasa Indonesia. Gunakan format Markdown yang rapi (seperti **bold**, atau list jika perlu).
+Jika pengguna menyapa (halo/p/test), atau pesan kurang jelas, sertakan daftar command berikut di akhir jawabanmu:
+🟢 /online : Cek daftar tiket Redaman Online (max -24 dB)
+⚠️ /ttr : Cek tiket HVC Gold dengan TTR mepet range 9 - 12 Jam
+📋 /unspec : Cek daftar tiket UNSPEC (PL-TSEL Unspecified)
+📊 /prov atau /pso atau /summary : Laporan Provisioning & Sisa Order
 
 Berikut adalah RINGKASAN DATA SAAT INI (Format JSON):
 {context_json}
@@ -1714,9 +1742,9 @@ Pertanyaan pengguna ({user_name}):
             send_telegram_message(chat_id, ai_reply)
 
         except Exception as e:
-            print("AI Error, falling back to manual summary:", e)
-            manual_msg = generate_manual_summary()
-            send_telegram_message(chat_id, manual_msg)
+            print("AI Error, falling back to help guide:", e)
+            help_msg = generate_help_guide()
+            send_telegram_message(chat_id, help_msg)
 
     return "OK", 200
 
