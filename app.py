@@ -1442,43 +1442,139 @@ def call_openrouter_api(prompt):
     raise Exception(f"OpenRouter Error: {last_error}")
 
 
-def generate_manual_summary():
-    dash = load_dashboard_data("", "", "")
-    s = dash["summary"]
-    re_cnt = dash.get("jam_re_chart", {}).get("total", 0)
-    ps_cnt = s.get("total_ps", 0)
-    ps_re_ratio = (ps_cnt / re_cnt * 100) if re_cnt > 0 else 0.0
+def get_order_category_summary(r: dict) -> str:
+    jo = normalize_upper(r.get("jenis_order") or get_product_name_normalized(r) or "")
+    crm = normalize_upper(r.get("crm_order_type") or "")
+    pname = normalize_upper(r.get("product_name") or "")
+    
+    if "INDIBIZ" in jo or "INDIBIZ" in pname:
+        return "INDIBIZ"
+    elif any(k in jo or k in crm or k in pname for k in ["TIF", "VULA", "PDA"]):
+        return "TIF / VULA"
+    else:
+        return "INDIHOME"
 
-    sisa_map = {}
+
+def generate_manual_summary():
+    now_utc = datetime.now(timezone.utc)
+    now_wita = now_utc + timedelta(hours=8)
+    today_wita = now_wita.strftime("%Y-%m-%d")
+
+    all_orders = Order.query.all()
+    all_rows = [o.to_dict() for o in all_orders]
+
+    persistent_statuses = {"SEDANG DIKERJAKAN", "PENDING", "MATERIAL/NTE", "PROSES SETTING", "BELUM DIKERJAKAN"}
+    active_rows = []
+    for r in all_rows:
+        is_today = (r.get("dispatch_date") == today_wita or 
+                    r.get("status_date_parsed") == today_wita or 
+                    r.get("date_created_parsed") == today_wita)
+        is_persistent = normalize_upper(r.get("status morning")) in persistent_statuses
+        if is_today or is_persistent:
+            active_rows.append(r)
+
+    target_rows = active_rows if active_rows else all_rows
+
+    def is_ps_order(r):
+        st_up = normalize_upper(r.get("Status"))
+        sm_up = normalize_upper(r.get("status morning"))
+        dt_st = r.get("status_date_parsed")
+        tgl_ps = r.get("tgl_ps_parsed")
+        if (dt_st == today_wita or tgl_ps == today_wita):
+            if any(k in st_up for k in ["COMPWORK", "PS", "COMPLETED"]) or any(k in sm_up for k in ["COMPWORK", "PS", "COMPLETED"]):
+                return True
+        return False
+
+    potensi_kw = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP", "SETTING", "VALDAT", "QC", "VALIDASI", "POTENSI"}
+
+    cats = defaultdict(list)
+    for r in target_rows:
+        cats[get_order_category_summary(r)].append(r)
+
+    # 1. INDIHOME
+    indihome_rows = cats["INDIHOME"]
+    re_indihome = sum(1 for r in indihome_rows if r.get("date_created_parsed") == today_wita)
+    ps_indihome = sum(1 for r in indihome_rows if is_ps_order(r))
+    ratio_indihome = (ps_indihome / re_indihome * 100) if re_indihome > 0 else 0.0
+
+    pot_indihome = sum(1 for r in indihome_rows if any(k in normalize_upper(r.get("Status")) for k in potensi_kw) or any(k in normalize_upper(r.get("status morning")) for k in potensi_kw))
+    ogp_indihome = sum(1 for r in indihome_rows if normalize_upper(r.get("status morning")) == "SEDANG DIKERJAKAN")
+    oke_tarik_indihome = sum(1 for r in indihome_rows if "OKE TARIK" in normalize_upper(r.get("status morning")) or "OKE TARIK" in normalize_upper(r.get("Status")))
+
+    # Tim Idle (Active today but not in OGP)
+    all_teams = set()
+    ogp_teams = set()
+    for r in target_rows:
+        t = (r.get("TIM") or r.get("tim") or "").strip()
+        if t and t != "-":
+            all_teams.add(t)
+            if normalize_upper(r.get("status morning")) == "SEDANG DIKERJAKAN":
+                ogp_teams.add(t)
+    idle_teams = sorted(list(all_teams - ogp_teams))
+
+    # 2. INDIBIZ
+    indibiz_rows = cats["INDIBIZ"]
+    ps_indibiz = sum(1 for r in indibiz_rows if is_ps_order(r))
+    pot_indibiz = sum(1 for r in indibiz_rows if any(k in normalize_upper(r.get("Status")) for k in potensi_kw) or any(k in normalize_upper(r.get("status morning")) for k in potensi_kw))
+    ogp_indibiz = sum(1 for r in indibiz_rows if normalize_upper(r.get("status morning")) == "SEDANG DIKERJAKAN")
+    oke_tarik_indibiz = sum(1 for r in indibiz_rows if "OKE TARIK" in normalize_upper(r.get("status morning")) or "OKE TARIK" in normalize_upper(r.get("Status")))
+
+    # 3. TIF / VULA
+    tif_rows = cats["TIF / VULA"]
+    ps_tif = sum(1 for r in tif_rows if is_ps_order(r))
+    pot_tif = sum(1 for r in tif_rows if any(k in normalize_upper(r.get("Status")) for k in potensi_kw) or any(k in normalize_upper(r.get("status morning")) for k in potensi_kw))
+    ogp_tif = sum(1 for r in tif_rows if normalize_upper(r.get("status morning")) == "SEDANG DIKERJAKAN")
+    oke_tarik_tif = sum(1 for r in tif_rows if "OKE TARIK" in normalize_upper(r.get("status morning")) or "OKE TARIK" in normalize_upper(r.get("Status")))
+
+    # 4. Sisa Order Breakdown
+    dash = load_dashboard_data("", "", "")
+    sisa_map = {"BLC": 0, "SER": 0, "STI": 0, "KPL": 0, "PGT": 0, "KIP": 0}
     if "sisa_pivot" in dash and "workzones" in dash["sisa_pivot"]:
         for wz in dash["sisa_pivot"]["workzones"]:
             wz_name = wz.get("workzone", "").upper()
             sisa_map[wz_name] = wz.get("wz_grand_total", 0)
+    total_sisa = sum(sisa_map.values())
 
-    msg = f"""Provisioning 
+    lines = [f"📊 *LAPORAN MONITORING PROVISIONING ({today_wita})*\n"]
 
-INDIHOME
+    lines.append("🏠 *INDIHOME*")
+    lines.append(f"• RE Hari ini : `{re_indihome}`")
+    lines.append(f"• PS Hari ini : `{ps_indihome}`")
+    lines.append(f"• PS/RE : `{ratio_indihome:.1f}%`\n")
+    lines.append(f"• Potensi : `{pot_indihome}`")
+    lines.append(f"• Sedang OGP : `{ogp_indihome}`")
+    lines.append(f"• OKE Tarik : `{oke_tarik_indihome}`\n")
 
-RE Hari ini : {re_cnt}
-PS Hari ini : {ps_cnt}
-PS/RE : {ps_re_ratio:.1f}% (PS/RE)
+    lines.append(f"👥 *Tim Idle ({len(idle_teams)} Tim):*")
+    if idle_teams:
+        for tm in idle_teams:
+            lines.append(f"• `{tm}`")
+    else:
+        lines.append("• Tidak ada tim idle saat ini.")
 
-Potensi : {s.get("total_potensi", 0)}
-Sedang OGP : {s.get("sedang_ogp", 0)}
-OKE Tarik : {s.get("oke_tarik", 0)}
-Belum Dikerjakan : {s.get("belum_dikerjakan", 0)}
-Undispatch : {s.get("undispatch", 0)}
-Tim idle : {s.get("idle_teams_count", 0)}
+    lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
 
-======
-Sisa Order :
-BLC : {sisa_map.get("BLC", 0)}
-SER : {sisa_map.get("SER", 0)}
-STI : {sisa_map.get("STI", 0)}
-KPL : {sisa_map.get("KPL", 0)}
-PGT : {sisa_map.get("PGT", 0)}
-KIP : {sisa_map.get("KIP", 0)}"""
-    return msg
+    lines.append("🏢 *INDIBIZ*")
+    lines.append(f"• PS Hari ini : `{ps_indibiz}`")
+    lines.append(f"• Potensi : `{pot_indibiz}`")
+    lines.append(f"• Sedang OGP : `{ogp_indibiz}`")
+    lines.append(f"• OKE Tarik : `{oke_tarik_indibiz}`")
+
+    lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
+
+    lines.append("⚡ *TIF / VULA*")
+    lines.append(f"• PS Hari ini : `{ps_tif}`")
+    lines.append(f"• Potensi : `{pot_tif}`")
+    lines.append(f"• Sedang OGP : `{ogp_tif}`")
+    lines.append(f"• OKE Tarik : `{oke_tarik_tif}`")
+
+    lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
+
+    lines.append(f"📊 *Sisa Order (Total: {total_sisa} Order)*")
+    for wz_code in ["BLC", "SER", "STI", "KPL", "PGT", "KIP"]:
+        lines.append(f"• {wz_code} : `{sisa_map.get(wz_code, 0)}`")
+
+    return "\n".join(lines).strip()
 
 
 def clean_odp_code(odc_str: str) -> str:
