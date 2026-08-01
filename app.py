@@ -1769,8 +1769,29 @@ def generate_pending_summary() -> str:
     return "\n".join(lines).strip()
 
 
+def generate_sync_summary() -> str:
+    global last_sync_time
+    c1 = sync_orders()
+    c2 = sync_assurance_tickets()
+    last_sync_time = datetime.now()
+    
+    now_utc = datetime.now(timezone.utc)
+    now_wita = (now_utc + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S WITA")
+    
+    return f"""🔄 *SINKRONISASI DATA BERHASIL!*
+
+✅ *Data Provisioning:* Synced `{c1}` order
+✅ *Data Assurance:* Synced `{c2}` tiket
+🕒 *Waktu Sync:* `{now_wita}`
+
+💡 _Data database telah diperbarui ke versi terbaru. Silakan jalankan command monitoring Anda (misal: /psbsore, /gamas, /pending, /online, /ttr, /unspec)._"""
+
+
 def generate_help_guide():
     return """🤖 *PANDUAN FITUR & DAFTAR COMMAND BOT MONITORING*
+
+🔄 *COMMAND SINKRONISASI DATA*
+🔄 `/sync` : Update & tarik data realtime terbaru dari Google Sheet
 
 📌 *COMMAND ASSURANCE (TIKET GANGGUAN)*
 🚨 `/gamas` : Cek tiket GAMAS per Workzone (lengkap sebaran ODP)
@@ -1779,7 +1800,7 @@ def generate_help_guide():
 📋 `/unspec` : Cek tiket UNSPEC (PL-TSEL Unspecified) per Workzone
 
 📌 *COMMAND PROVISIONING (PASANG BARU)*
-🟡 `/pending` : Cek daftar Order PENDING beserta catatan kendala per Workzone
+🟡 `/pending` : Cek Order PENDING beserta catatan kendala per Workzone
 🌅 `/psbsore` : Cek Order Sedang OGP dan Total Potensi
 📊 `/prov` atau `/pso` atau `/summary` : Summary Laporan Provisioning & Sisa Order
 
@@ -1809,6 +1830,15 @@ def telegram_webhook():
         if cmd in {"/start", "/help", "help", "menu", "petunjuk", "command", "fitur", "info"} or cmd.startswith("/help") or cmd.startswith("/start"):
             help_msg = generate_help_guide()
             send_telegram_message(chat_id, help_msg)
+            return "OK", 200
+
+        if cmd.startswith("/sync") or cmd.startswith("/update") or cmd.startswith("/refresh"):
+            try:
+                sync_msg = generate_sync_summary()
+                send_telegram_message(chat_id, sync_msg)
+            except Exception as ex:
+                print(f"Error in /sync command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /sync: {str(ex)}")
             return "OK", 200
 
         if cmd.startswith("/pending"):
