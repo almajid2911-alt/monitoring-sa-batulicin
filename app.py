@@ -695,6 +695,15 @@ def parse_redaman_val(val_str: str) -> float:
         return 0.0
 
 
+def is_gamas_ticket(r: dict) -> bool:
+    sum_str = normalize_upper(r.get("summary"))
+    cat_str = normalize_upper(r.get("catatan"))
+    desc_str = normalize_upper(r.get("description_assignment"))
+    ctype_str = normalize_upper(r.get("customer_type"))
+    jt_str = normalize_upper(r.get("jenis_tiket"))
+    return ("GAMAS" in sum_str) or ("GAMAS" in cat_str) or ("GAMAS" in desc_str) or ("GAMAS" in ctype_str) or ("GAMAS" in jt_str)
+
+
 def get_is_manja(r: dict) -> str:
     desc = normalize_upper(r.get("description_assignment"))
     return "YES" if "CUSTOMER ASSIGN" in desc else "NO"
@@ -788,7 +797,7 @@ def load_assurance_data(sektor: str = "", wilsus: str = "", jenis_tiket: str = "
     osla_count = sum(1 for r in pl_tsel_rows if parse_ttr_val(r.get("ttr")) > 12.0 and not is_sqm_or_unspec(r.get("summary")))
     sqm_count = sum(1 for r in pl_tsel_rows if "SQM" in normalize_upper(r.get("summary")))
     unspec_count = sum(1 for r in pl_tsel_rows if "UNSPEC" in normalize_upper(r.get("summary")) or "UNSPEK" in normalize_upper(r.get("summary")))
-    gamas_count = sum(1 for r in pl_tsel_rows if "GAMAS" in normalize_upper(r.get("summary")))
+    gamas_count = sum(1 for r in pl_tsel_rows if is_gamas_ticket(r))
     
     belum_count = sum(1 for r in pl_tsel_rows if normalize_upper(r.get("status_kawan")) in {"", "BELUM DIKERJAKAN"})
     undispatch_count = sum(1 for r in pl_tsel_rows if not is_truthy_text(r.get("tim")) or r.get("tim") == "-")
@@ -1958,7 +1967,7 @@ def api_assurance_detail():
         elif category == "unspec":
             if is_pl_tsel and ("UNSPEC" in summary or "UNSPEK" in summary): result.append(r)
         elif category == "gamas":
-            if is_pl_tsel and "GAMAS" in summary: result.append(r)
+            if is_pl_tsel and is_gamas_ticket(r): result.append(r)
         elif category == "assurance_belum_dikerjakan":
             if is_pl_tsel and sk in {"", "BELUM DIKERJAKAN"}: result.append(r)
         elif category == "assurance_undispatch":
