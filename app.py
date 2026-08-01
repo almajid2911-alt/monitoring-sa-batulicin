@@ -1606,10 +1606,43 @@ def generate_online_redaman_summary():
     return "\n".join(lines).strip()
 
 
+def generate_gamas_summary():
+    all_tickets = AssuranceTicket.query.all()
+    rows = [t.to_dict() for t in all_tickets]
+    
+    gamas_rows = [r for r in rows if is_gamas_ticket(r)]
+    if not gamas_rows:
+        return "Tidak ada tiket GAMAS saat ini."
+
+    grouped = defaultdict(list)
+    for r in gamas_rows:
+        wz = normalize_text(r.get("workzone") or "KOSONG").upper()
+        grouped[wz].append(r)
+
+    lines = [f"🚨 *MONITORING TIKET GAMAS ({len(gamas_rows)} Tiket)*\n"]
+    for wz in sorted(grouped.keys()):
+        lines.append(f"🏢 *WORKZONE {wz}*")
+        for r in grouped[wz]:
+            inc = r.get("incident") or "-"
+            raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
+            odc = clean_odp_code(raw_odc)
+            hu = normalize_upper(r.get("hasil_ukur")) or "EMPTY"
+            r_val = parse_redaman_val(r.get("redaman"))
+            if r_val != 0:
+                r_str = f"-{abs(r_val):.2f}"
+            else:
+                r_str = "-"
+            lines.append(f"`{inc}` • `{odc}` • *{hu}* `{r_str}`")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 def generate_help_guide():
     return """🤖 *PANDUAN FITUR & DAFTAR COMMAND BOT MONITORING*
 
 📌 *COMMAND ASSURANCE (TIKET GANGGUAN)*
+🚨 `/gamas` : Cek daftar tiket terdampak GAMAS per Workzone
 🟢 `/online` : Cek daftar tiket Redaman Online (max -24 dB) per Workzone
 ⚠️ `/ttr` : Cek tiket HVC Gold dengan TTR mepet (range 9 - 12 jam) per Workzone
 📋 `/unspec` : Cek daftar tiket UNSPEC (PL-TSEL Unspecified) per Workzone
@@ -1621,7 +1654,7 @@ def generate_help_guide():
 Anda juga bisa bertanya langsung menggunakan bahasa alami:
 • _"Berapa total PS hari ini?"_
 • _"Berapa tiket manja yang aktif?"_
-• _"Tim mana PS terbanyak hari ini?"_"""
+• _"Berapa tiket gamas?"_"""
 
 
 @app.route("/api/telegram/webhook", methods=["POST"])
@@ -1643,6 +1676,20 @@ def telegram_webhook():
         if cmd in {"/start", "/help", "help", "menu", "petunjuk", "command", "fitur", "info"} or cmd.startswith("/help") or cmd.startswith("/start"):
             help_msg = generate_help_guide()
             send_telegram_message(chat_id, help_msg)
+            return "OK", 200
+
+        if cmd.startswith("/gamas"):
+            try:
+                gamas_msg = generate_gamas_summary()
+                if len(gamas_msg) > 4000:
+                    chunks = [gamas_msg[i:i+4000] for i in range(0, len(gamas_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, gamas_msg)
+            except Exception as ex:
+                print(f"Error in /gamas command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /gamas: {str(ex)}")
             return "OK", 200
 
         if cmd.startswith("/online") or cmd.startswith("/redaman"):
