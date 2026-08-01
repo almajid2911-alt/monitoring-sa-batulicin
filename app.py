@@ -1717,14 +1717,54 @@ def generate_psb_sore_summary() -> str:
             sorted_potensi = sorted(grouped_qc[qc], key=lambda x: (normalize_upper(x.get("workzone")), x.get("Workorder") or x.get("track_order") or ""))
             for r in sorted_potensi:
                 jo = r.get("jenis_order") or get_product_name_normalized(r) or "INDIHOME"
-                srv = r.get("service_no") or r.get("Service No.") or "-"
                 tim = r.get("TIM") or r.get("tim") or "-"
                 wo = r.get("Workorder") or r.get("workorder") or r.get("track_order") or "-"
                 eskal = r.get("eskal_daman") or r.get("Eskal daman") or "Belum eskal daman"
-                lines.append(f"• `{jo}` • `{srv}` • `{tim}` • `{wo}` • `{eskal}`")
+                lines.append(f"• `{jo}` • `{tim}` • `{wo}` • `{eskal}`")
             lines.append("")
     else:
         lines.append("Tidak ada order Potensi saat ini.")
+
+    return "\n".join(lines).strip()
+
+
+def generate_pending_summary() -> str:
+    now_utc = datetime.now(timezone.utc)
+    now_wita = now_utc + timedelta(hours=8)
+    today_wita = now_wita.strftime("%Y-%m-%d")
+
+    all_orders = Order.query.all()
+    all_rows = [o.to_dict() for o in all_orders]
+
+    persistent_statuses = {"SEDANG DIKERJAKAN", "PENDING", "MATERIAL/NTE", "PROSES SETTING", "BELUM DIKERJAKAN"}
+    active_rows = []
+    for r in all_rows:
+        is_today = r.get("dispatch_date") == today_wita or r.get("status_date_parsed") == today_wita
+        is_persistent = normalize_upper(r.get("status morning")) in persistent_statuses
+        if is_today or is_persistent:
+            active_rows.append(r)
+
+    target_rows = active_rows if active_rows else all_rows
+
+    pending_rows = [r for r in target_rows if "PENDING" in normalize_upper(r.get("status morning"))]
+    if not pending_rows:
+        return "Tidak ada order PENDING saat ini."
+
+    grouped = defaultdict(list)
+    for r in pending_rows:
+        wz = normalize_text(r.get("workzone") or "KOSONG").upper()
+        grouped[wz].append(r)
+
+    lines = [f"🟡 *MONITORING ORDER PENDING ({len(pending_rows)} Order)*\n"]
+    for wz in sorted(grouped.keys()):
+        lines.append(f"🏢 *WORKZONE {wz}*")
+        sorted_rows = sorted(grouped[wz], key=lambda x: x.get("track_order") or "")
+        for r in sorted_rows:
+            tr = r.get("track_order") or r.get("SC Order No/Track ID/CSRM No") or "-"
+            tim = r.get("TIM") or r.get("tim") or "-"
+            cat = (r.get("Catatan") or r.get("catatan") or r.get("status morning") or "-").strip()
+            lines.append(f"• `{tr}` • `{tim}` • `{cat}`")
+        lines.append("")
 
     return "\n".join(lines).strip()
 
@@ -1733,20 +1773,21 @@ def generate_help_guide():
     return """🤖 *PANDUAN FITUR & DAFTAR COMMAND BOT MONITORING*
 
 📌 *COMMAND ASSURANCE (TIKET GANGGUAN)*
-🚨 `/gamas` : Cek daftar tiket terdampak GAMAS per Workzone (lengkap sebaran ODP)
-🟢 `/online` : Cek daftar tiket Redaman Online (max -24 dB) per Workzone
-⚠️ `/ttr` : Cek tiket HVC Gold dengan TTR mepet (range 9 - 12 jam) per Workzone
-📋 `/unspec` : Cek daftar tiket UNSPEC (PL-TSEL Unspecified) per Workzone
+🚨 `/gamas` : Cek tiket GAMAS per Workzone (lengkap sebaran ODP)
+🟢 `/online` : Cek tiket Redaman Online (max -24 dB) per Workzone
+⚠️ `/ttr` : Cek tiket HVC Gold TTR mepet (9 - 12 jam) per Workzone
+📋 `/unspec` : Cek tiket UNSPEC (PL-TSEL Unspecified) per Workzone
 
 📌 *COMMAND PROVISIONING (PASANG BARU)*
-🌅 `/psbsore` : Cek daftar Order Sedang OGP dan Total Potensi
-📊 `/prov` atau `/pso` atau `/summary` : Cek Summary Laporan Provisioning & Sisa Order per Workzone
+🟡 `/pending` : Cek daftar Order PENDING beserta catatan kendala per Workzone
+🌅 `/psbsore` : Cek Order Sedang OGP dan Total Potensi
+📊 `/prov` atau `/pso` atau `/summary` : Summary Laporan Provisioning & Sisa Order
 
 💬 *BOT INTERAKTIF*
 Anda juga bisa bertanya langsung menggunakan bahasa alami:
 • _"Berapa total PS hari ini?"_
 • _"Berapa tiket manja yang aktif?"_
-• _"Berapa tiket gamas?"_"""
+• _"Berapa order pending hari ini?"_"""
 
 
 @app.route("/api/telegram/webhook", methods=["POST"])
@@ -1768,6 +1809,20 @@ def telegram_webhook():
         if cmd in {"/start", "/help", "help", "menu", "petunjuk", "command", "fitur", "info"} or cmd.startswith("/help") or cmd.startswith("/start"):
             help_msg = generate_help_guide()
             send_telegram_message(chat_id, help_msg)
+            return "OK", 200
+
+        if cmd.startswith("/pending"):
+            try:
+                pending_msg = generate_pending_summary()
+                if len(pending_msg) > 4000:
+                    chunks = [pending_msg[i:i+4000] for i in range(0, len(pending_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, pending_msg)
+            except Exception as ex:
+                print(f"Error in /pending command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /pending: {str(ex)}")
             return "OK", 200
 
         if cmd.startswith("/psbsore") or cmd.startswith("/psb_sore"):
