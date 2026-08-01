@@ -1655,16 +1655,77 @@ def generate_gamas_summary():
     return "\n".join(lines).strip()
 
 
+def generate_psb_sore_summary() -> str:
+    now_utc = datetime.now(timezone.utc)
+    now_wita = now_utc + timedelta(hours=8)
+    today_wita = now_wita.strftime("%Y-%m-%d")
+
+    all_orders = Order.query.all()
+    all_rows = [o.to_dict() for o in all_orders]
+
+    persistent_statuses = {"SEDANG DIKERJAKAN", "PENDING", "MATERIAL/NTE", "PROSES SETTING", "BELUM DIKERJAKAN"}
+    active_rows = []
+    for r in all_rows:
+        is_today = r.get("dispatch_date") == today_wita or r.get("status_date_parsed") == today_wita
+        is_persistent = normalize_upper(r.get("status morning")) in persistent_statuses
+        if is_today or is_persistent:
+            active_rows.append(r)
+
+    target_rows = active_rows if active_rows else all_rows
+
+    # 1. OGP
+    ogp_rows = [r for r in target_rows if normalize_upper(r.get("status morning")) == "SEDANG DIKERJAKAN"]
+
+    # 2. POTENSI
+    potensi_keywords = {"VALSTART", "VAL START", "ACTCOMP", "ACT COMP", "ACTCOPM", "VALCOMP", "VAL COMP", "SETTING", "VALDAT", "QC", "VALIDASI", "POTENSI"}
+    potensi_rows = []
+    for r in target_rows:
+        st_up = normalize_upper(r.get("Status"))
+        sm_up = normalize_upper(r.get("status morning"))
+        if any(v in st_up for v in potensi_keywords) or any(v in sm_up for v in potensi_keywords):
+            potensi_rows.append(r)
+
+    lines = [f"📋 *LAPORAN MONITORING PSB SORE ({today_wita})*\n"]
+
+    lines.append(f"🟧 *ORDER SEDANG OGP ({len(ogp_rows)} Order)*")
+    if ogp_rows:
+        sorted_ogp = sorted(ogp_rows, key=lambda x: (normalize_upper(x.get("workzone")), x.get("track_order") or ""))
+        for r in sorted_ogp:
+            tr = r.get("track_order") or r.get("SC Order No/Track ID/CSRM No") or "-"
+            wz = normalize_text(r.get("workzone") or "KOSONG").upper()
+            tim = r.get("TIM") or r.get("tim") or "-"
+            lines.append(f"• `{tr}` • `{wz}` • `{tim}`")
+    else:
+        lines.append("Tidak ada order Sedang OGP saat ini.")
+
+    lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
+
+    lines.append(f"🟦 *ORDER POTENSI ({len(potensi_rows)} Order)*")
+    if potensi_rows:
+        sorted_potensi = sorted(potensi_rows, key=lambda x: (normalize_upper(x.get("workzone")), x.get("track_order") or ""))
+        for r in sorted_potensi:
+            tr = r.get("track_order") or r.get("SC Order No/Track ID/CSRM No") or "-"
+            wz = normalize_text(r.get("workzone") or "KOSONG").upper()
+            tim = r.get("TIM") or r.get("tim") or "-"
+            ket = r.get("keterangan_eskalasi") or r.get("keterangan") or r.get("status morning") or r.get("Status") or "-"
+            lines.append(f"• `{tr}` • `{wz}` • `{tim}` • `{ket}`")
+    else:
+        lines.append("Tidak ada order Potensi saat ini.")
+
+    return "\n".join(lines).strip()
+
+
 def generate_help_guide():
     return """🤖 *PANDUAN FITUR & DAFTAR COMMAND BOT MONITORING*
 
 📌 *COMMAND ASSURANCE (TIKET GANGGUAN)*
-🚨 `/gamas` : Cek daftar tiket terdampak GAMAS per Workzone
+🚨 `/gamas` : Cek daftar tiket terdampak GAMAS per Workzone (lengkap sebaran ODP)
 🟢 `/online` : Cek daftar tiket Redaman Online (max -24 dB) per Workzone
 ⚠️ `/ttr` : Cek tiket HVC Gold dengan TTR mepet (range 9 - 12 jam) per Workzone
 📋 `/unspec` : Cek daftar tiket UNSPEC (PL-TSEL Unspecified) per Workzone
 
 📌 *COMMAND PROVISIONING (PASANG BARU)*
+🌅 `/psbsore` : Cek daftar Order Sedang OGP dan Total Potensi
 📊 `/prov` atau `/pso` atau `/summary` : Cek Summary Laporan Provisioning & Sisa Order per Workzone
 
 💬 *BOT INTERAKTIF*
@@ -1693,6 +1754,20 @@ def telegram_webhook():
         if cmd in {"/start", "/help", "help", "menu", "petunjuk", "command", "fitur", "info"} or cmd.startswith("/help") or cmd.startswith("/start"):
             help_msg = generate_help_guide()
             send_telegram_message(chat_id, help_msg)
+            return "OK", 200
+
+        if cmd.startswith("/psbsore") or cmd.startswith("/psb_sore"):
+            try:
+                psb_msg = generate_psb_sore_summary()
+                if len(psb_msg) > 4000:
+                    chunks = [psb_msg[i:i+4000] for i in range(0, len(psb_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, psb_msg)
+            except Exception as ex:
+                print(f"Error in /psbsore command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /psbsore: {str(ex)}")
             return "OK", 200
 
         if cmd.startswith("/gamas"):
