@@ -1703,17 +1703,26 @@ def generate_psb_sore_summary() -> str:
 
     lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
 
-    lines.append(f"🟦 *ORDER POTENSI ({len(potensi_rows)} Order)*")
+    lines.append(f"🟦 *ORDER POTENSI ({len(potensi_rows)} Order)*\n")
     if potensi_rows:
-        sorted_potensi = sorted(potensi_rows, key=lambda x: (normalize_upper(x.get("workzone")), x.get("Workorder") or x.get("track_order") or ""))
-        for r in sorted_potensi:
-            jo = r.get("jenis_order") or get_product_name_normalized(r) or "INDIHOME"
-            srv = r.get("service_no") or r.get("Service No.") or "-"
-            tim = r.get("TIM") or r.get("tim") or "-"
-            wo = r.get("Workorder") or r.get("workorder") or r.get("track_order") or "-"
-            qc = r.get("validasi") or r.get("cek qc") or "-"
-            eskal = r.get("eskal_daman") or r.get("Eskal daman") or "-"
-            lines.append(f"• `{jo}` • `{srv}` • `{tim}` • `{wo}` • `{qc}` • `{eskal}`")
+        grouped_qc = defaultdict(list)
+        for r in potensi_rows:
+            qc = (r.get("validasi") or r.get("cek qc") or r.get("status morning") or "Belum dorong").strip()
+            if not qc or qc == "-":
+                qc = "Belum dorong"
+            grouped_qc[qc].append(r)
+
+        for qc in sorted(grouped_qc.keys()):
+            lines.append(f"*{qc}*")
+            sorted_potensi = sorted(grouped_qc[qc], key=lambda x: (normalize_upper(x.get("workzone")), x.get("Workorder") or x.get("track_order") or ""))
+            for r in sorted_potensi:
+                jo = r.get("jenis_order") or get_product_name_normalized(r) or "INDIHOME"
+                srv = r.get("service_no") or r.get("Service No.") or "-"
+                tim = r.get("TIM") or r.get("tim") or "-"
+                wo = r.get("Workorder") or r.get("workorder") or r.get("track_order") or "-"
+                eskal = r.get("eskal_daman") or r.get("Eskal daman") or "Belum eskal daman"
+                lines.append(f"• `{jo}` • `{srv}` • `{tim}` • `{wo}` • `{eskal}`")
+            lines.append("")
     else:
         lines.append("Tidak ada order Potensi saat ini.")
 
