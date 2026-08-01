@@ -2320,29 +2320,51 @@ def api_status():
 
 
 
+@app.errorhandler(500)
+def internal_server_error(e):
+    import traceback
+    err_tb = traceback.format_exc()
+    print("500 Internal Server Error Traceback:\n", err_tb)
+    return f"<h3>Internal Server Error</h3><pre>{err_tb}</pre>", 500
+
+
 def init_db_migration():
     with app.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+        except Exception as e:
+            print("db.create_all note:", e)
+
         try:
             conn = db.engine.raw_connection()
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(assurance_ticket)")
             cols = [info[1] for info in cursor.fetchall()]
             if "status_garansi" not in cols:
-                cursor.execute("ALTER TABLE assurance_ticket ADD COLUMN status_garansi VARCHAR(100)")
-                conn.commit()
-                print("Migrated assurance_ticket table with status_garansi column")
+                try:
+                    cursor.execute("ALTER TABLE assurance_ticket ADD COLUMN status_garansi VARCHAR(100)")
+                    conn.commit()
+                    print("Migrated assurance_ticket table with status_garansi column")
+                except Exception as ex:
+                    print("Note adding status_garansi:", ex)
 
-            cursor.execute("PRAGMA table_info('order')")
+            cursor.execute('PRAGMA table_info("order")')
             order_cols = [info[1] for info in cursor.fetchall()]
             if "service_no" not in order_cols:
-                cursor.execute('ALTER TABLE "order" ADD COLUMN service_no VARCHAR(100)')
-                conn.commit()
-                print("Migrated order table with service_no column")
+                try:
+                    cursor.execute('ALTER TABLE "order" ADD COLUMN service_no VARCHAR(100)')
+                    conn.commit()
+                    print("Migrated order table with service_no column")
+                except Exception as ex:
+                    print("Note adding service_no:", ex)
         except Exception as e:
             print("DB Migration Note:", e)
 
-init_db_migration()
+try:
+    init_db_migration()
+except Exception as ex:
+    print("init_db_migration error:", ex)
+
 
 if __name__ == "__main__":
     with app.app_context():
