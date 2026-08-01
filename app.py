@@ -679,6 +679,22 @@ def get_jenis_tiket(r: dict) -> str:
     return "REGULER"
 
 
+def parse_ttr_val(val_str: str) -> float:
+    if not val_str or str(val_str).strip() in {"-", "", "None"}: return 0.0
+    try:
+        return float(str(val_str).replace(',', '.').strip())
+    except:
+        return 0.0
+
+
+def parse_redaman_val(val_str: str) -> float:
+    if not val_str or str(val_str).strip() in {"-", "", "None"}: return 0.0
+    try:
+        return float(str(val_str).replace(',', '.').strip())
+    except:
+        return 0.0
+
+
 def get_is_manja(r: dict) -> str:
     desc = normalize_upper(r.get("description_assignment"))
     return "YES" if "CUSTOMER ASSIGN" in desc else "NO"
@@ -1517,13 +1533,17 @@ def telegram_webhook():
 
         cmd = user_text.strip().lower()
         if cmd.startswith("/unspec") or cmd.startswith("/unspek"):
-            unspec_msg = generate_unspec_summary()
-            if len(unspec_msg) > 4000:
-                chunks = [unspec_msg[i:i+4000] for i in range(0, len(unspec_msg), 4000)]
-                for c in chunks:
-                    send_telegram_message(chat_id, c)
-            else:
-                send_telegram_message(chat_id, unspec_msg)
+            try:
+                unspec_msg = generate_unspec_summary()
+                if len(unspec_msg) > 4000:
+                    chunks = [unspec_msg[i:i+4000] for i in range(0, len(unspec_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, unspec_msg)
+            except Exception as ex:
+                print(f"Error in /unspec command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /unspec: {str(ex)}")
             return "OK", 200
 
         if cmd.startswith("/prov") or cmd.startswith("/pso") or cmd.startswith("/summary") or cmd.startswith("/start") or cmd.startswith("/help") or cmd == "provisioning":
