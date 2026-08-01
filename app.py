@@ -1622,7 +1622,11 @@ def generate_gamas_summary():
     lines = [f"🚨 *MONITORING TIKET GAMAS ({len(gamas_rows)} Tiket)*\n"]
     for wz in sorted(grouped.keys()):
         lines.append(f"🏢 *WORKZONE {wz}*")
-        for r in grouped[wz]:
+        sorted_rows = sorted(
+            grouped[wz],
+            key=lambda r: clean_odp_code(r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-")
+        )
+        for r in sorted_rows:
             inc = r.get("incident") or "-"
             raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
             odc = clean_odp_code(raw_odc)
