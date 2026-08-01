@@ -1595,12 +1595,12 @@ def generate_online_redaman_summary():
         lines.append(f"🏢 *WORKZONE {wz}*")
         for r, r_val in grouped[wz]:
             inc = r.get("incident") or "-"
-            srv = r.get("service_no") or "-"
             raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
             odc = clean_odp_code(raw_odc)
             hu = (r.get("hasil_ukur") or "ONLINE").upper()
+            jt = r.get("jenis_tiket") or get_jenis_tiket(r)
             r_str = f"-{abs(r_val):.2f}" if r_val != 0 else "-"
-            lines.append(f"`{inc}` • `{srv}` • `{odc}` • *{hu}* `{r_str}`")
+            lines.append(f"`{jt}` • `{inc}` • `{odc}` • *{hu}* `{r_str}`")
         lines.append("")
 
     return "\n".join(lines).strip()
