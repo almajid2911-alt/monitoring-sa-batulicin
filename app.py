@@ -2038,27 +2038,28 @@ def generate_prov_idle_summary() -> str:
         if st_up not in {"STARTWORK", "WORKFAIL"}:
             continue
 
-        tim = (r.get("TIM") or r.get("tim") or "").strip()
         sm = (r.get("status morning") or r.get("status_morning") or "").strip()
         sm_up = sm.upper()
 
-        is_undispatch = not tim or tim == "-" or tim.upper() == "EMPTY"
-        is_belum = sm_up in {"BELUM DIKERJAKAN", "EMPTY", "-", ""}
+        # Strict filter: status morning MUST be empty, "-", "EMPTY", or "BELUM DIKERJAKAN"
+        allowed_sm = {"", "-", "EMPTY", "BELUM DIKERJAKAN"}
+        if sm_up not in allowed_sm:
+            continue
 
-        if is_undispatch or is_belum:
-            cat = get_order_category_summary(r)
-            tr = r.get("track_order") or "-"
-            if cat == "INDIHOME":
-                tr_up = tr.upper()
-                if not (tr_up.startswith("AO") or tr_up.startswith("PD")):
-                    continue
+        cat = get_order_category_summary(r)
+        tr = r.get("track_order") or "-"
+        if cat == "INDIHOME":
+            tr_up = tr.upper()
+            if not (tr_up.startswith("AO") or tr_up.startswith("PD")):
+                continue
 
-            odc_val = (r.get("ODC") or r.get("odc") or "-").strip()
-            odc = odc_val.split()[0] if odc_val else "-"
-            tim_str = tim if tim and tim != "-" else "EMPTY"
-            sm_str = sm if sm and sm != "-" else "EMPTY"
+        tim = (r.get("TIM") or r.get("tim") or "").strip()
+        odc_val = (r.get("ODC") or r.get("odc") or "-").strip()
+        odc = odc_val.split()[0] if odc_val else "-"
+        tim_str = tim if tim and tim != "-" else "EMPTY"
+        sm_str = sm if sm and sm != "-" else "EMPTY"
 
-            cats[cat].append(f"`{tr}` `{odc}` `{tim_str}` `{sm_str}`")
+        cats[cat].append(f"`{tr}` `{odc}` `{tim_str}` `{sm_str}`")
 
     lines = ["📦 *LAPORAN PROVISIONING UNDISPATCH & BELUM DIKERJAKAN*\n"]
     for unit_name in ["INDIHOME", "INDIBIZ", "TIF / VULA"]:
