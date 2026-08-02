@@ -171,7 +171,10 @@ def normalize_upper(value: str | None) -> str:
 
 
 def fetch_sheet_rows() -> list[dict[str, str]]:
-    response = requests.get(SHEET_CSV_URL, timeout=30)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    response = requests.get(SHEET_CSV_URL, headers=headers, timeout=25)
     response.raise_for_status()
     content = response.content.decode("utf-8-sig", errors="replace")
     return list(csv.DictReader(io.StringIO(content)))
@@ -607,7 +610,10 @@ def sync_orders():
 
 def sync_assurance_tickets() -> int:
     try:
-        resp = requests.get(ASSURANCE_SHEET_CSV_URL, timeout=30)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        resp = requests.get(ASSURANCE_SHEET_CSV_URL, headers=headers, timeout=25)
         resp.raise_for_status()
         content = resp.content.decode('utf-8-sig', errors='replace')
         
@@ -1929,12 +1935,22 @@ def telegram_webhook():
             return "OK", 200
 
         if cmd.startswith("/sync") or cmd.startswith("/update") or cmd.startswith("/refresh"):
-            try:
-                sync_msg = generate_sync_summary()
-                send_telegram_message(chat_id, sync_msg)
-            except Exception as ex:
-                print(f"Error in /sync command: {ex}")
-                send_telegram_message(chat_id, f"⚠️ Gagal memproses /sync: {str(ex)}")
+            send_telegram_message(chat_id, "⏳ *Proses sinkronisasi data sedang berjalan...*\n_Mohon tunggu sebentar, data sedang ditarik dari Google Sheets._")
+            
+            def do_bg_sync(target_chat_id):
+                with app.app_context():
+                    try:
+                        sync_msg = generate_sync_summary()
+                        send_telegram_message(target_chat_id, sync_msg)
+                    except Exception as ex:
+                        print(f"Error in async /sync: {ex}")
+                        send_telegram_message(
+                            target_chat_id, 
+                            f"⚠️ *Sinkronisasi Gagal:* {str(ex)}\n\n"
+                            "💡 _Server Google Sheets sedang mengalami perlambatan/gangguan koneksi. Silakan coba jalankan /sync kembali beberapa saat lagi._"
+                        )
+
+            threading.Thread(target=do_bg_sync, args=(chat_id,)).start()
             return "OK", 200
 
         if cmd.startswith("/pending"):
