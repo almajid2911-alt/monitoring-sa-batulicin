@@ -1544,12 +1544,12 @@ def generate_manual_summary():
     lines = [f"📊 *LAPORAN MONITORING PROVISIONING ({today_wita})*\n"]
 
     lines.append("🏠 *INDIHOME*")
-    lines.append(f"• RE Hari ini : `{re_indihome}`")
-    lines.append(f"• PS Hari ini : `{ps_indihome}`")
-    lines.append(f"• PS/RE : `{ratio_indihome:.1f}%`\n")
-    lines.append(f"• Potensi : `{pot_indihome}`")
-    lines.append(f"• Sedang OGP : `{ogp_indihome}`")
-    lines.append(f"• OKE Tarik : `{oke_tarik_indihome}`\n")
+    lines.append(f"• 📋 RE Hari ini : `{re_indihome}`")
+    lines.append(f"• ✅ PS Hari ini : `{ps_indihome}`")
+    lines.append(f"• 📈 Ratio PS/RE : `{ratio_indihome:.1f}%`\n")
+    lines.append(f"• 🟦 Potensi : `{pot_indihome}`")
+    lines.append(f"• 🟧 Sedang OGP : `{ogp_indihome}`")
+    lines.append(f"• 🟩 OKE Tarik : `{oke_tarik_indihome}`\n")
 
     lines.append(f"👥 *Tim Idle ({len(idle_teams)} Tim):*")
     if idle_teams:
@@ -1561,22 +1561,22 @@ def generate_manual_summary():
     lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
 
     lines.append("🏢 *INDIBIZ*")
-    lines.append(f"• PS Hari ini : `{ps_indibiz}`")
-    lines.append(f"• Potensi : `{pot_indibiz}`")
-    lines.append(f"• Sedang OGP : `{ogp_indibiz}`")
-    lines.append(f"• OKE Tarik : `{oke_tarik_indibiz}`")
+    lines.append(f"• ✅ PS Hari ini : `{ps_indibiz}`")
+    lines.append(f"• 🟦 Potensi : `{pot_indibiz}`")
+    lines.append(f"• 🟧 Sedang OGP : `{ogp_indibiz}`")
+    lines.append(f"• 🟩 OKE Tarik : `{oke_tarik_indibiz}`")
 
     lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
 
     lines.append("⚡ *TIF / VULA*")
-    lines.append(f"• PS Hari ini : `{ps_tif}`")
-    lines.append(f"• Potensi : `{pot_tif}`")
-    lines.append(f"• Sedang OGP : `{ogp_tif}`")
-    lines.append(f"• OKE Tarik : `{oke_tarik_tif}`")
+    lines.append(f"• ✅ PS Hari ini : `{ps_tif}`")
+    lines.append(f"• 🟦 Potensi : `{pot_tif}`")
+    lines.append(f"• 🟧 Sedang OGP : `{ogp_tif}`")
+    lines.append(f"• 🟩 OKE Tarik : `{oke_tarik_tif}`")
 
     lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
 
-    lines.append(f"📊 *Sisa Order (Total: {total_sisa} Order)*")
+    lines.append(f"📦 *Sisa Order (Total: {total_sisa} Order)*")
     for wz_code in ["BLC", "SER", "STI", "KPL", "PGT", "KIP"]:
         lines.append(f"• {wz_code} : `{sisa_map.get(wz_code, 0)}`")
 
@@ -1902,16 +1902,16 @@ def generate_asr_summary() -> str:
         counts[cat] = counts.get(cat, 0) + 1
 
     lines = []
-    lines.append(f"Total Saldo Tiket : {total_saldo}")
-    lines.append(f"- HVC Gold : {counts['HVC Gold']}")
-    lines.append(f"- HVC Platinum : {counts['HVC Platinum']}")
-    lines.append(f"- HVC Diamond : {counts['HVC Diamond']}")
-    lines.append(f"- Reguler : {counts['Reguler']}")
-    lines.append(f"- SQM : {counts['SQM']}")
-    lines.append(f"- RBS : {counts['RBS']}")
-    lines.append(f"- Unspec : {counts['Unspec']}")
-    lines.append("================")
-    lines.append("")
+    lines.append(f"📊 *LAPORAN SUMMARY ASSURANCE (TIKET GANGGUAN)*\n")
+    lines.append(f"🎫 *Total Saldo Tiket : {total_saldo}*")
+    lines.append(f"• 🥇 HVC Gold : {counts['HVC Gold']}")
+    lines.append(f"• 💎 HVC Platinum : {counts['HVC Platinum']}")
+    lines.append(f"• 💠 HVC Diamond : {counts['HVC Diamond']}")
+    lines.append(f"• 👤 Reguler : {counts['Reguler']}")
+    lines.append(f"• ⚡ SQM : {counts['SQM']}")
+    lines.append(f"• 🏢 RBS : {counts['RBS']}")
+    lines.append(f"• ❓ Unspec : {counts['Unspec']}")
+    lines.append("━━━━━━━━━━━━━━━━━━━━━\n")
 
     # 2. Tiket Manja
     manja_list = []
@@ -1920,20 +1920,22 @@ def generate_asr_summary() -> str:
         jm = (r.get("jam_manja") or r.get("booking_date") or "").strip()
         if jm and " " in jm and len(jm) > 10:
             time_part = jm.split()[1][:5]
-            jm_str = f"{time_part} (JAM MANJA)"
+            jm_str = f" {time_part}"
         elif jm:
-            jm_str = f"{jm} (JAM MANJA)"
+            jm_str = f" {jm}"
         else:
-            jm_str = "(JAM MANJA)"
+            jm_str = ""
 
         if "CUSTOMER ASSIGN" in desc or (r.get("jam_manja") or "").strip():
             inc = r.get("incident") or "-"
             odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            manja_list.append(f"- {inc}\t{odp} {jm_str}")
+            manja_list.append(f"• `{inc}` `{odp}`{jm_str}")
 
-    lines.append(f"Tiket manja : {len(manja_list)}")
+    lines.append(f"⏳ *Tiket manja : {len(manja_list)}*")
     if manja_list:
         lines.extend(manja_list)
+    else:
+        lines.append("• Tidak ada tiket manja saat ini.")
     lines.append("")
 
     # 3. OSLA
@@ -1944,11 +1946,13 @@ def generate_asr_summary() -> str:
             inc = r.get("incident") or "-"
             odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
             ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            osla_list.append(f"- {inc} {odp} {ttr_str}")
+            osla_list.append(f"• `{inc}` `{odp}` `{ttr_str}`")
 
-    lines.append("OSLA :")
+    lines.append("⏰ *OSLA :*")
     if osla_list:
         lines.extend(osla_list)
+    else:
+        lines.append("• Tidak ada tiket OSLA saat ini.")
     lines.append("")
 
     # 4. GARANSI
@@ -1959,11 +1963,13 @@ def generate_asr_summary() -> str:
             odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
             ttr_val = parse_ttr(r.get("ttr"))
             ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            garansi_list.append(f"- {inc} {odp} {ttr_str}")
+            garansi_list.append(f"• `{inc}` `{odp}` `{ttr_str}`")
 
-    lines.append("GARANSI :")
+    lines.append("🛡️ *GARANSI :*")
     if garansi_list:
         lines.extend(garansi_list)
+    else:
+        lines.append("• Tidak ada tiket Garansi saat ini.")
     lines.append("")
 
     # 5. HVC Diamond & Platinum
@@ -1976,16 +1982,18 @@ def generate_asr_summary() -> str:
             jm = (r.get("jam_manja") or r.get("booking_date") or "").strip()
             if jm and " " in jm and len(jm) > 10:
                 time_part = jm.split()[1][:5]
-                jm_str = f"{time_part} (JAM MANJA)"
+                jm_str = f" {time_part}"
             elif jm:
-                jm_str = f"{jm} (JAM MANJA)"
+                jm_str = f" {jm}"
             else:
-                jm_str = "(JAM MANJA)"
-            dia_plat_list.append(f"- {inc}\t{odp} {jm_str}")
+                jm_str = ""
+            dia_plat_list.append(f"• `{inc}` `{odp}`{jm_str}")
 
-    lines.append(f"HVC Diamond & Platinum: {len(dia_plat_list)}")
+    lines.append(f"💎 *HVC Diamond & Platinum : {len(dia_plat_list)}*")
     if dia_plat_list:
         lines.extend(dia_plat_list)
+    else:
+        lines.append("• Tidak ada tiket HVC Diamond/Platinum saat ini.")
     lines.append("")
 
     # 6. Undispatch & Belum Dikerjakan
@@ -2007,15 +2015,103 @@ def generate_asr_summary() -> str:
             undispatch_counts[cat] += 1
             total_undispatch_belum += 1
 
-    lines.append("====================")
-    lines.append(f"Undispatch & Belum Dikerjakan : {total_undispatch_belum}")
-    lines.append(f"- HVC Gold : {undispatch_counts['HVC Gold']}")
-    lines.append(f"- HVC Platinum : {undispatch_counts['HVC Platinum']}")
-    lines.append(f"- HVC Diamond : {undispatch_counts['HVC Diamond']}")
-    lines.append(f"- Reguler : {undispatch_counts['Reguler']}")
-    lines.append(f"- SQM : {undispatch_counts['SQM']}")
-    lines.append(f"- RBS : {undispatch_counts['RBS']}")
-    lines.append(f"- Unspec : {undispatch_counts['Unspec']}")
+    lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    lines.append(f"🚨 *Undispatch & Belum Dikerjakan : {total_undispatch_belum}*")
+    lines.append(f"• 🥇 HVC Gold : {undispatch_counts['HVC Gold']}")
+    lines.append(f"• 💎 HVC Platinum : {undispatch_counts['HVC Platinum']}")
+    lines.append(f"• 💠 HVC Diamond : {undispatch_counts['HVC Diamond']}")
+    lines.append(f"• 👤 Reguler : {undispatch_counts['Reguler']}")
+    lines.append(f"• ⚡ SQM : {undispatch_counts['SQM']}")
+    lines.append(f"• 🏢 RBS : {undispatch_counts['RBS']}")
+    lines.append(f"• ❓ Unspec : {undispatch_counts['Unspec']}")
+
+    return "\n".join(lines).strip()
+
+
+def generate_prov_idle_summary() -> str:
+    all_orders = Order.query.all()
+    all_rows = [o.to_dict() for o in all_orders]
+
+    cats = defaultdict(list)
+    for r in all_rows:
+        tim = (r.get("TIM") or r.get("tim") or "").strip()
+        sm = (r.get("status morning") or r.get("status_morning") or "").strip()
+        sm_up = sm.upper()
+
+        is_undispatch = not tim or tim == "-" or tim.upper() == "EMPTY"
+        is_belum = sm_up in {"BELUM DIKERJAKAN", "EMPTY", "-", ""}
+
+        if is_undispatch or is_belum:
+            cat = get_order_category_summary(r)
+            tr = r.get("track_order") or "-"
+            odc_val = (r.get("ODC") or r.get("odc") or "-").strip()
+            odc = odc_val.split()[0] if odc_val else "-"
+            tim_str = tim if tim and tim != "-" else "EMPTY"
+            sm_str = sm if sm and sm != "-" else "EMPTY"
+
+            cats[cat].append(f"{tr} {odc} {tim_str} {sm_str}")
+
+    lines = ["📦 *LAPORAN PROVISIONING UNDISPATCH & BELUM DIKERJAKAN*\n"]
+    for unit_name in ["INDIHOME", "INDIBIZ", "TIF / VULA"]:
+        items = cats[unit_name]
+        lines.append(f"*{unit_name}*")
+        if items:
+            for item in items:
+                lines.append(item)
+        else:
+            lines.append("Tidak ada order undispatch/belum dikerjakan.")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+def generate_asr_idle_summary() -> str:
+    all_tickets = AssuranceTicket.query.all()
+    rows = [t.to_dict() for t in all_tickets]
+
+    def classify_ticket(r):
+        summary = (r.get("summary") or "").upper()
+        cust_type = (r.get("customer_type") or "").upper()
+        cust_seg = (r.get("customer_segment") or "").upper()
+
+        if cust_seg == "RBS" or "RBS" in summary or "RBS" in cust_type:
+            return "RBS"
+        if "SQM" in summary:
+            return "SQM"
+        if "UNSPEC" in summary or "UNSPEK" in summary:
+            return "UNSPEC"
+        if "GOLD" in cust_type:
+            return "HVC GOLD"
+        if "DIAMOND" in cust_type:
+            return "HVC DIAMOND"
+        if "PLATINUM" in cust_type:
+            return "HVC PLATINUM"
+        return "REGULER"
+
+    cats = defaultdict(list)
+    for r in rows:
+        tim = (r.get("tim") or "").strip()
+        sk = (r.get("status_kawan") or "").strip().upper()
+
+        is_undispatch = not tim or tim == "-" or tim.upper() == "EMPTY"
+        is_belum = sk in {"BELUM DIKERJAKAN", "EMPTY", "-", ""}
+
+        if is_undispatch or is_belum:
+            c_name = classify_ticket(r)
+            inc = r.get("incident") or "-"
+            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+            cats[c_name].append(f"{inc} {odp}")
+
+    lines = ["🚨 *LAPORAN ASSURANCE UNDISPATCH & BELUM DIKERJAKAN*\n"]
+    for unit_name in ["HVC GOLD", "HVC DIAMOND", "HVC PLATINUM", "SQM", "UNSPEC", "RBS"]:
+        items = cats[unit_name]
+        lines.append(f"*{unit_name}*")
+        if items:
+            for item in items:
+                lines.append(item)
+        else:
+            lines.append("Tidak ada tiket undispatch/belum dikerjakan.")
+        lines.append("")
 
     return "\n".join(lines).strip()
 
@@ -2076,7 +2172,7 @@ def generate_sync_summary() -> str:
 ✅ *Data Assurance:* Synced `{c2}` tiket
 🕒 *Waktu Sync:* `{now_wita}`
 
-💡 _Data database telah diperbarui ke versi terbaru. Silakan jalankan command monitoring Anda (misal: /psbsore, /gamas, /pending, /online, /ttr, /unspec, /asr)._"""
+💡 _Data database telah diperbarui ke versi terbaru. Silakan jalankan command monitoring Anda (misal: /psbsore, /gamas, /pending, /online, /ttr, /unspec, /asr, /providle, /asridle)._"""
 
 
 def generate_help_guide():
@@ -2087,15 +2183,17 @@ def generate_help_guide():
 
 📌 *COMMAND ASSURANCE (TIKET GANGGUAN)*
 📊 `/asr` : Laporan Summary & Status Tiket Gangguan (Assurance)
+🚨 `/asridle` : Laporan Tiket Assurance Undispatch & Belum Dikerjakan
 🚨 `/gamas` : Cek tiket GAMAS per Workzone (lengkap sebaran ODP)
 🟢 `/online` : Cek tiket Redaman Online (max -24 dB) per Workzone
 ⚠️ `/ttr` : Cek tiket HVC Gold TTR mepet (9 - 12 jam) per Workzone
 📋 `/unspec` : Cek tiket UNSPEC (PL-TSEL Unspecified) per Workzone
 
 📌 *COMMAND PROVISIONING (PASANG BARU)*
-🟡 `/pending` : Cek Order PENDING beserta catatan kendala per Workzone
-🌅 `/psbsore` : Cek Order Sedang OGP dan Total Potensi
 📊 `/prov` atau `/pso` atau `/summary` : Summary Laporan Provisioning & Sisa Order
+📦 `/providle` : Laporan Order Provisioning Undispatch & Belum Dikerjakan
+🌅 `/psbsore` : Cek Order Sedang OGP dan Total Potensi
+🟡 `/pending` : Cek Order PENDING beserta catatan kendala per Workzone
 
 💬 *BOT INTERAKTIF*
 Anda juga bisa bertanya langsung menggunakan bahasa alami:
@@ -2142,6 +2240,34 @@ def telegram_webhook():
                         )
 
             threading.Thread(target=do_bg_sync, args=(chat_id,)).start()
+            return "OK", 200
+
+        if cmd.startswith("/providle") or cmd.startswith("/psoidle"):
+            try:
+                msg = generate_prov_idle_summary()
+                if len(msg) > 4000:
+                    chunks = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, msg)
+            except Exception as ex:
+                print(f"Error in /providle command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /providle: {str(ex)}")
+            return "OK", 200
+
+        if cmd.startswith("/asridle") or cmd.startswith("/assuranceidle"):
+            try:
+                msg = generate_asr_idle_summary()
+                if len(msg) > 4000:
+                    chunks = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, msg)
+            except Exception as ex:
+                print(f"Error in /asridle command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /asridle: {str(ex)}")
             return "OK", 200
 
         if cmd.startswith("/asr") or cmd.startswith("/assurance"):
