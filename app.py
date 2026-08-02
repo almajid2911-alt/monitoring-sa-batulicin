@@ -2034,6 +2034,10 @@ def generate_prov_idle_summary() -> str:
 
     cats = defaultdict(list)
     for r in all_rows:
+        st_up = (r.get("Status") or r.get("status") or "").strip().upper()
+        if st_up not in {"STARTWORK", "WORKFAIL"}:
+            continue
+
         tim = (r.get("TIM") or r.get("tim") or "").strip()
         sm = (r.get("status morning") or r.get("status_morning") or "").strip()
         sm_up = sm.upper()
@@ -2044,22 +2048,27 @@ def generate_prov_idle_summary() -> str:
         if is_undispatch or is_belum:
             cat = get_order_category_summary(r)
             tr = r.get("track_order") or "-"
+            if cat == "INDIHOME":
+                tr_up = tr.upper()
+                if not (tr_up.startswith("AO") or tr_up.startswith("PD")):
+                    continue
+
             odc_val = (r.get("ODC") or r.get("odc") or "-").strip()
             odc = odc_val.split()[0] if odc_val else "-"
             tim_str = tim if tim and tim != "-" else "EMPTY"
             sm_str = sm if sm and sm != "-" else "EMPTY"
 
-            cats[cat].append(f"{tr} {odc} {tim_str} {sm_str}")
+            cats[cat].append(f"`{tr}` `{odc}` `{tim_str}` `{sm_str}`")
 
     lines = ["📦 *LAPORAN PROVISIONING UNDISPATCH & BELUM DIKERJAKAN*\n"]
     for unit_name in ["INDIHOME", "INDIBIZ", "TIF / VULA"]:
         items = cats[unit_name]
-        lines.append(f"*{unit_name}*")
+        lines.append(f"🏠 *{unit_name}*" if unit_name == "INDIHOME" else (f"🏢 *{unit_name}*" if unit_name == "INDIBIZ" else f"⚡ *{unit_name}*"))
         if items:
             for item in items:
                 lines.append(item)
         else:
-            lines.append("Tidak ada order undispatch/belum dikerjakan.")
+            lines.append("• Tidak ada order undispatch/belum dikerjakan.")
         lines.append("")
 
     return "\n".join(lines).strip()
@@ -2068,6 +2077,13 @@ def generate_prov_idle_summary() -> str:
 def generate_asr_idle_summary() -> str:
     all_tickets = AssuranceTicket.query.all()
     rows = [t.to_dict() for t in all_tickets]
+
+    def parse_ttr(val_str):
+        if not val_str: return 0.0
+        try:
+            return float(str(val_str).replace(',', '.').strip())
+        except:
+            return 0.0
 
     def classify_ticket(r):
         summary = (r.get("summary") or "").upper()
@@ -2100,17 +2116,29 @@ def generate_asr_idle_summary() -> str:
             c_name = classify_ticket(r)
             inc = r.get("incident") or "-"
             odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            cats[c_name].append(f"{inc} {odp}")
+            ttr_val = parse_ttr(r.get("ttr"))
+            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+            cats[c_name].append(f"`{inc}` `{odp}` `{ttr_str}`")
 
     lines = ["🚨 *LAPORAN ASSURANCE UNDISPATCH & BELUM DIKERJAKAN*\n"]
-    for unit_name in ["HVC GOLD", "HVC DIAMOND", "HVC PLATINUM", "SQM", "UNSPEC", "RBS"]:
+    icon_map = {
+        "HVC GOLD": "🥇",
+        "HVC DIAMOND": "💠",
+        "HVC PLATINUM": "💎",
+        "REGULER": "👤",
+        "SQM": "⚡",
+        "UNSPEC": "❓",
+        "RBS": "🏢"
+    }
+    for unit_name in ["HVC GOLD", "HVC DIAMOND", "HVC PLATINUM", "REGULER", "SQM", "UNSPEC", "RBS"]:
         items = cats[unit_name]
-        lines.append(f"*{unit_name}*")
+        icon = icon_map.get(unit_name, "📌")
+        lines.append(f"{icon} *{unit_name}*")
         if items:
             for item in items:
                 lines.append(item)
         else:
-            lines.append("Tidak ada tiket undispatch/belum dikerjakan.")
+            lines.append("• Tidak ada tiket undispatch/belum dikerjakan.")
         lines.append("")
 
     return "\n".join(lines).strip()
