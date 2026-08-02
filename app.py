@@ -1799,7 +1799,16 @@ def generate_psb_sore_summary() -> str:
         for r in sorted_ogp:
             tr = r.get("track_order") or r.get("SC Order No/Track ID/CSRM No") or "-"
             tim = r.get("TIM") or r.get("tim") or "-"
-            lines.append(f"• `{tr}` • `{tim}`")
+            catatan = (r.get("Catatan") or r.get("catatan") or "").strip()
+            if not catatan or catatan in {".", "-"}:
+                sm = (r.get("status morning") or r.get("status_morning") or "").strip()
+                if "TARIK" in sm.upper():
+                    catatan = sm
+
+            if catatan and catatan not in {".", "-"}:
+                lines.append(f"• `{tr}` • `{tim}` • \n{catatan}")
+            else:
+                lines.append(f"• `{tr}` • `{tim}`")
     else:
         lines.append("Tidak ada order Sedang OGP saat ini.")
 
@@ -1826,6 +1835,187 @@ def generate_psb_sore_summary() -> str:
             lines.append("")
     else:
         lines.append("Tidak ada order Potensi saat ini.")
+
+    return "\n".join(lines).strip()
+
+
+def generate_asr_summary() -> str:
+    all_tickets = AssuranceTicket.query.all()
+    rows = [t.to_dict() for t in all_tickets]
+
+    def parse_ttr(val_str):
+        if not val_str: return 0.0
+        try:
+            return float(str(val_str).replace(',', '.').strip())
+        except:
+            return 0.0
+
+    def is_sqm_or_unspec(summary_str):
+        s = (summary_str or "").upper()
+        return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
+
+    def is_garansi(r):
+        if is_sqm_or_unspec(r.get("summary")) or is_sqm_or_unspec(r.get("customer_type")):
+            return False
+        st_g = (r.get("status_garansi") or "").upper()
+        if st_g and ("GARANSI" in st_g or st_g in {"YES", "TRUE", "1", "Y"}):
+            return True
+        st = (r.get("guarante_status") or "").upper()
+        if not st:
+            return False
+        if "NOT" in st or "NON" in st or st == "NO":
+            return False
+        return "GARANSI" in st or "GUARANTEE" in st
+
+    def classify_ticket(r):
+        summary = (r.get("summary") or "").upper()
+        cust_type = (r.get("customer_type") or "").upper()
+        cust_seg = (r.get("customer_segment") or "").upper()
+        
+        if cust_seg == "RBS" or "RBS" in summary or "RBS" in cust_type:
+            return "RBS"
+        if "SQM" in summary:
+            return "SQM"
+        if "UNSPEC" in summary or "UNSPEK" in summary:
+            return "Unspec"
+        if "GOLD" in cust_type:
+            return "HVC Gold"
+        if "PLATINUM" in cust_type:
+            return "HVC Platinum"
+        if "DIAMOND" in cust_type:
+            return "HVC Diamond"
+        return "Reguler"
+
+    # 1. Total Saldo
+    total_saldo = len(rows)
+    counts = {
+        "HVC Gold": 0,
+        "HVC Platinum": 0,
+        "HVC Diamond": 0,
+        "Reguler": 0,
+        "SQM": 0,
+        "RBS": 0,
+        "Unspec": 0
+    }
+    for r in rows:
+        cat = classify_ticket(r)
+        counts[cat] = counts.get(cat, 0) + 1
+
+    lines = []
+    lines.append(f"Total Saldo Tiket : {total_saldo}")
+    lines.append(f"- HVC Gold : {counts['HVC Gold']}")
+    lines.append(f"- HVC Platinum : {counts['HVC Platinum']}")
+    lines.append(f"- HVC Diamond : {counts['HVC Diamond']}")
+    lines.append(f"- Reguler : {counts['Reguler']}")
+    lines.append(f"- SQM : {counts['SQM']}")
+    lines.append(f"- RBS : {counts['RBS']}")
+    lines.append(f"- Unspec : {counts['Unspec']}")
+    lines.append("================")
+    lines.append("")
+
+    # 2. Tiket Manja
+    manja_list = []
+    for r in rows:
+        desc = (r.get("description_assignment") or "").upper()
+        jm = (r.get("jam_manja") or r.get("booking_date") or "").strip()
+        if jm and " " in jm and len(jm) > 10:
+            time_part = jm.split()[1][:5]
+            jm_str = f"{time_part} (JAM MANJA)"
+        elif jm:
+            jm_str = f"{jm} (JAM MANJA)"
+        else:
+            jm_str = "(JAM MANJA)"
+
+        if "CUSTOMER ASSIGN" in desc or (r.get("jam_manja") or "").strip():
+            inc = r.get("incident") or "-"
+            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+            manja_list.append(f"- {inc}\t{odp} {jm_str}")
+
+    lines.append(f"Tiket manja : {len(manja_list)}")
+    if manja_list:
+        lines.extend(manja_list)
+    lines.append("")
+
+    # 3. OSLA
+    osla_list = []
+    for r in rows:
+        ttr_val = parse_ttr(r.get("ttr"))
+        if ttr_val > 12.0 and not is_sqm_or_unspec(r.get("summary")):
+            inc = r.get("incident") or "-"
+            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+            osla_list.append(f"- {inc} {odp} {ttr_str}")
+
+    lines.append("OSLA :")
+    if osla_list:
+        lines.extend(osla_list)
+    lines.append("")
+
+    # 4. GARANSI
+    garansi_list = []
+    for r in rows:
+        if is_garansi(r):
+            inc = r.get("incident") or "-"
+            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+            ttr_val = parse_ttr(r.get("ttr"))
+            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+            garansi_list.append(f"- {inc} {odp} {ttr_str}")
+
+    lines.append("GARANSI :")
+    if garansi_list:
+        lines.extend(garansi_list)
+    lines.append("")
+
+    # 5. HVC Diamond & Platinum
+    dia_plat_list = []
+    for r in rows:
+        cust_type = (r.get("customer_type") or "").upper()
+        if ("DIAMOND" in cust_type or "PLATINUM" in cust_type) and not is_sqm_or_unspec(r.get("summary")):
+            inc = r.get("incident") or "-"
+            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+            jm = (r.get("jam_manja") or r.get("booking_date") or "").strip()
+            if jm and " " in jm and len(jm) > 10:
+                time_part = jm.split()[1][:5]
+                jm_str = f"{time_part} (JAM MANJA)"
+            elif jm:
+                jm_str = f"{jm} (JAM MANJA)"
+            else:
+                jm_str = "(JAM MANJA)"
+            dia_plat_list.append(f"- {inc}\t{odp} {jm_str}")
+
+    lines.append(f"HVC Diamond & Platinum: {len(dia_plat_list)}")
+    if dia_plat_list:
+        lines.extend(dia_plat_list)
+    lines.append("")
+
+    # 6. Undispatch & Belum Dikerjakan
+    undispatch_counts = {
+        "HVC Gold": 0,
+        "HVC Platinum": 0,
+        "HVC Diamond": 0,
+        "Reguler": 0,
+        "SQM": 0,
+        "RBS": 0,
+        "Unspec": 0
+    }
+    total_undispatch_belum = 0
+    for r in rows:
+        tim = (r.get("tim") or "").strip()
+        sk = (r.get("status_kawan") or "").strip().upper()
+        if not tim or tim == "-" or sk in {"", "BELUM DIKERJAKAN"}:
+            cat = classify_ticket(r)
+            undispatch_counts[cat] += 1
+            total_undispatch_belum += 1
+
+    lines.append("====================")
+    lines.append(f"Undispatch & Belum Dikerjakan : {total_undispatch_belum}")
+    lines.append(f"- HVC Gold : {undispatch_counts['HVC Gold']}")
+    lines.append(f"- HVC Platinum : {undispatch_counts['HVC Platinum']}")
+    lines.append(f"- HVC Diamond : {undispatch_counts['HVC Diamond']}")
+    lines.append(f"- Reguler : {undispatch_counts['Reguler']}")
+    lines.append(f"- SQM : {undispatch_counts['SQM']}")
+    lines.append(f"- RBS : {undispatch_counts['RBS']}")
+    lines.append(f"- Unspec : {undispatch_counts['Unspec']}")
 
     return "\n".join(lines).strip()
 
@@ -1886,7 +2076,7 @@ def generate_sync_summary() -> str:
 ✅ *Data Assurance:* Synced `{c2}` tiket
 🕒 *Waktu Sync:* `{now_wita}`
 
-💡 _Data database telah diperbarui ke versi terbaru. Silakan jalankan command monitoring Anda (misal: /psbsore, /gamas, /pending, /online, /ttr, /unspec)._"""
+💡 _Data database telah diperbarui ke versi terbaru. Silakan jalankan command monitoring Anda (misal: /psbsore, /gamas, /pending, /online, /ttr, /unspec, /asr)._"""
 
 
 def generate_help_guide():
@@ -1896,6 +2086,7 @@ def generate_help_guide():
 🔄 `/sync` : Update & tarik data realtime terbaru dari Google Sheet
 
 📌 *COMMAND ASSURANCE (TIKET GANGGUAN)*
+📊 `/asr` : Laporan Summary & Status Tiket Gangguan (Assurance)
 🚨 `/gamas` : Cek tiket GAMAS per Workzone (lengkap sebaran ODP)
 🟢 `/online` : Cek tiket Redaman Online (max -24 dB) per Workzone
 ⚠️ `/ttr` : Cek tiket HVC Gold TTR mepet (9 - 12 jam) per Workzone
@@ -1951,6 +2142,20 @@ def telegram_webhook():
                         )
 
             threading.Thread(target=do_bg_sync, args=(chat_id,)).start()
+            return "OK", 200
+
+        if cmd.startswith("/asr") or cmd.startswith("/assurance"):
+            try:
+                asr_msg = generate_asr_summary()
+                if len(asr_msg) > 4000:
+                    chunks = [asr_msg[i:i+4000] for i in range(0, len(asr_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, asr_msg)
+            except Exception as ex:
+                print(f"Error in /asr command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /asr: {str(ex)}")
             return "OK", 200
 
         if cmd.startswith("/pending"):
