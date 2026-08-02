@@ -1914,9 +1914,15 @@ def generate_asr_summary() -> str:
     lines.append("━━━━━━━━━━━━━━━━━━━━━\n")
 
     # 2. Tiket Manja
-    manja_list = []
+    manja_rows = []
     for r in rows:
         desc = (r.get("description_assignment") or "").upper()
+        if "CUSTOMER ASSIGN" in desc or (r.get("jam_manja") or "").strip():
+            manja_rows.append(r)
+
+    sorted_manja = sorted(manja_rows, key=lambda x: clean_odc_real(x.get("device_name"), x.get("odc_real")))
+    manja_list = []
+    for r in sorted_manja:
         jm = (r.get("jam_manja") or r.get("booking_date") or "").strip()
         if jm and " " in jm and len(jm) > 10:
             time_part = jm.split()[1][:5]
@@ -1926,11 +1932,10 @@ def generate_asr_summary() -> str:
         else:
             jm_str = ""
 
-        if "CUSTOMER ASSIGN" in desc or (r.get("jam_manja") or "").strip():
-            inc = r.get("incident") or "-"
-            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-            manja_list.append(f"• `{inc}` `{odp}`{jm_str}{gamas_flag}")
+        inc = r.get("incident") or "-"
+        odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+        gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+        manja_list.append(f"• `{inc}` `{odp}`{jm_str}{gamas_flag}")
 
     lines.append(f"⏳ *Tiket manja : {len(manja_list)}*")
     if manja_list:
@@ -1940,15 +1945,21 @@ def generate_asr_summary() -> str:
     lines.append("")
 
     # 3. OSLA
-    osla_list = []
+    osla_rows = []
     for r in rows:
         ttr_val = parse_ttr(r.get("ttr"))
         if ttr_val > 12.0 and not is_sqm_or_unspec(r.get("summary")):
-            inc = r.get("incident") or "-"
-            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-            osla_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
+            osla_rows.append(r)
+
+    sorted_osla = sorted(osla_rows, key=lambda x: clean_odc_real(x.get("device_name"), x.get("odc_real")))
+    osla_list = []
+    for r in sorted_osla:
+        inc = r.get("incident") or "-"
+        odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+        ttr_val = parse_ttr(r.get("ttr"))
+        ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+        gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+        osla_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
 
     lines.append("⏰ *OSLA :*")
     if osla_list:
@@ -1958,15 +1969,16 @@ def generate_asr_summary() -> str:
     lines.append("")
 
     # 4. GARANSI
+    garansi_rows = [r for r in rows if is_garansi(r)]
+    sorted_garansi = sorted(garansi_rows, key=lambda x: clean_odc_real(x.get("device_name"), x.get("odc_real")))
     garansi_list = []
-    for r in rows:
-        if is_garansi(r):
-            inc = r.get("incident") or "-"
-            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            ttr_val = parse_ttr(r.get("ttr"))
-            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-            garansi_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
+    for r in sorted_garansi:
+        inc = r.get("incident") or "-"
+        odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+        ttr_val = parse_ttr(r.get("ttr"))
+        ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+        gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+        garansi_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
 
     lines.append("🛡️ *GARANSI :*")
     if garansi_list:
@@ -1976,16 +1988,21 @@ def generate_asr_summary() -> str:
     lines.append("")
 
     # 5. HVC Gold Detail
-    gold_detail_list = []
+    gold_rows = []
     for r in rows:
         cust_type = (r.get("customer_type") or "").upper()
         if "GOLD" in cust_type and not is_sqm_or_unspec(r.get("summary")) and not is_sqm_or_unspec(cust_type):
-            inc = r.get("incident") or "-"
-            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            ttr_val = parse_ttr(r.get("ttr"))
-            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-            gold_detail_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
+            gold_rows.append(r)
+
+    sorted_gold = sorted(gold_rows, key=lambda x: clean_odc_real(x.get("device_name"), x.get("odc_real")))
+    gold_detail_list = []
+    for r in sorted_gold:
+        inc = r.get("incident") or "-"
+        odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+        ttr_val = parse_ttr(r.get("ttr"))
+        ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+        gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+        gold_detail_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
 
     lines.append(f"🥇 *HVC Gold : {len(gold_detail_list)}*")
     if gold_detail_list:
@@ -1995,16 +2012,21 @@ def generate_asr_summary() -> str:
     lines.append("")
 
     # 6. HVC Diamond & Platinum Detail
-    dia_plat_list = []
+    dia_plat_rows = []
     for r in rows:
         cust_type = (r.get("customer_type") or "").upper()
         if ("DIAMOND" in cust_type or "PLATINUM" in cust_type) and not is_sqm_or_unspec(r.get("summary")):
-            inc = r.get("incident") or "-"
-            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            ttr_val = parse_ttr(r.get("ttr"))
-            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-            dia_plat_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
+            dia_plat_rows.append(r)
+
+    sorted_dia_plat = sorted(dia_plat_rows, key=lambda x: clean_odc_real(x.get("device_name"), x.get("odc_real")))
+    dia_plat_list = []
+    for r in sorted_dia_plat:
+        inc = r.get("incident") or "-"
+        odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+        ttr_val = parse_ttr(r.get("ttr"))
+        ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+        gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+        dia_plat_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
 
     lines.append(f"💎 *HVC Diamond & Platinum : {len(dia_plat_list)}*")
     if dia_plat_list:
@@ -2132,11 +2154,7 @@ def generate_asr_idle_summary() -> str:
 
         if is_undispatch or is_belum:
             c_name = classify_ticket(r)
-            inc = r.get("incident") or "-"
-            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            ttr_val = parse_ttr(r.get("ttr"))
-            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            cats[c_name].append(f"`{inc}` `{odp}` `{ttr_str}`")
+            cats[c_name].append(r)
 
     lines = ["🚨 *LAPORAN ASSURANCE UNDISPATCH & BELUM DIKERJAKAN*\n"]
     icon_map = {
@@ -2149,12 +2167,17 @@ def generate_asr_idle_summary() -> str:
         "RBS": "🏢"
     }
     for unit_name in ["HVC GOLD", "HVC DIAMOND", "HVC PLATINUM", "REGULER", "SQM", "UNSPEC", "RBS"]:
-        items = cats[unit_name]
+        row_list = cats[unit_name]
         icon = icon_map.get(unit_name, "📌")
         lines.append(f"{icon} *{unit_name}*")
-        if items:
-            for item in items:
-                lines.append(item)
+        if row_list:
+            sorted_rows = sorted(row_list, key=lambda x: clean_odc_real(x.get("device_name"), x.get("odc_real")))
+            for r in sorted_rows:
+                inc = r.get("incident") or "-"
+                odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+                ttr_val = parse_ttr(r.get("ttr"))
+                ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+                lines.append(f"`{inc}` `{odp}` `{ttr_str}`")
         else:
             lines.append("• Tidak ada tiket undispatch/belum dikerjakan.")
         lines.append("")
