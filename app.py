@@ -1929,7 +1929,8 @@ def generate_asr_summary() -> str:
         if "CUSTOMER ASSIGN" in desc or (r.get("jam_manja") or "").strip():
             inc = r.get("incident") or "-"
             odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            manja_list.append(f"• `{inc}` `{odp}`{jm_str}")
+            gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+            manja_list.append(f"• `{inc}` `{odp}`{jm_str}{gamas_flag}")
 
     lines.append(f"⏳ *Tiket manja : {len(manja_list)}*")
     if manja_list:
@@ -1946,7 +1947,8 @@ def generate_asr_summary() -> str:
             inc = r.get("incident") or "-"
             odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
             ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            osla_list.append(f"• `{inc}` `{odp}` `{ttr_str}`")
+            gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+            osla_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
 
     lines.append("⏰ *OSLA :*")
     if osla_list:
@@ -1963,7 +1965,8 @@ def generate_asr_summary() -> str:
             odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
             ttr_val = parse_ttr(r.get("ttr"))
             ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            garansi_list.append(f"• `{inc}` `{odp}` `{ttr_str}`")
+            gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+            garansi_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
 
     lines.append("🛡️ *GARANSI :*")
     if garansi_list:
@@ -1972,7 +1975,32 @@ def generate_asr_summary() -> str:
         lines.append("• Tidak ada tiket Garansi saat ini.")
     lines.append("")
 
-    # 5. HVC Diamond & Platinum
+    # 5. HVC Gold Detail
+    gold_detail_list = []
+    for r in rows:
+        cust_type = (r.get("customer_type") or "").upper()
+        if "GOLD" in cust_type and not is_sqm_or_unspec(r.get("summary")) and not is_sqm_or_unspec(cust_type):
+            inc = r.get("incident") or "-"
+            odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+            jm = (r.get("jam_manja") or r.get("booking_date") or "").strip()
+            if jm and " " in jm and len(jm) > 10:
+                time_part = jm.split()[1][:5]
+                jm_str = f" {time_part}"
+            elif jm:
+                jm_str = f" {jm}"
+            else:
+                jm_str = ""
+            gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+            gold_detail_list.append(f"• `{inc}` `{odp}`{jm_str}{gamas_flag}")
+
+    lines.append(f"🥇 *HVC Gold : {len(gold_detail_list)}*")
+    if gold_detail_list:
+        lines.extend(gold_detail_list)
+    else:
+        lines.append("• Tidak ada tiket HVC Gold saat ini.")
+    lines.append("")
+
+    # 6. HVC Diamond & Platinum Detail
     dia_plat_list = []
     for r in rows:
         cust_type = (r.get("customer_type") or "").upper()
@@ -1987,7 +2015,8 @@ def generate_asr_summary() -> str:
                 jm_str = f" {jm}"
             else:
                 jm_str = ""
-            dia_plat_list.append(f"• `{inc}` `{odp}`{jm_str}")
+            gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+            dia_plat_list.append(f"• `{inc}` `{odp}`{jm_str}{gamas_flag}")
 
     lines.append(f"💎 *HVC Diamond & Platinum : {len(dia_plat_list)}*")
     if dia_plat_list:
