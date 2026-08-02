@@ -1982,16 +1982,10 @@ def generate_asr_summary() -> str:
         if "GOLD" in cust_type and not is_sqm_or_unspec(r.get("summary")) and not is_sqm_or_unspec(cust_type):
             inc = r.get("incident") or "-"
             odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            jm = (r.get("jam_manja") or r.get("booking_date") or "").strip()
-            if jm and " " in jm and len(jm) > 10:
-                time_part = jm.split()[1][:5]
-                jm_str = f" {time_part}"
-            elif jm:
-                jm_str = f" {jm}"
-            else:
-                jm_str = ""
+            ttr_val = parse_ttr(r.get("ttr"))
+            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
             gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-            gold_detail_list.append(f"• `{inc}` `{odp}`{jm_str}{gamas_flag}")
+            gold_detail_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
 
     lines.append(f"🥇 *HVC Gold : {len(gold_detail_list)}*")
     if gold_detail_list:
@@ -2007,16 +2001,10 @@ def generate_asr_summary() -> str:
         if ("DIAMOND" in cust_type or "PLATINUM" in cust_type) and not is_sqm_or_unspec(r.get("summary")):
             inc = r.get("incident") or "-"
             odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-            jm = (r.get("jam_manja") or r.get("booking_date") or "").strip()
-            if jm and " " in jm and len(jm) > 10:
-                time_part = jm.split()[1][:5]
-                jm_str = f" {time_part}"
-            elif jm:
-                jm_str = f" {jm}"
-            else:
-                jm_str = ""
+            ttr_val = parse_ttr(r.get("ttr"))
+            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
             gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-            dia_plat_list.append(f"• `{inc}` `{odp}`{jm_str}{gamas_flag}")
+            dia_plat_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
 
     lines.append(f"💎 *HVC Diamond & Platinum : {len(dia_plat_list)}*")
     if dia_plat_list:
