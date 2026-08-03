@@ -2244,6 +2244,60 @@ def generate_sync_summary() -> str:
 💡 _Data database telah diperbarui ke versi terbaru. Silakan jalankan command monitoring Anda (misal: /psbsore, /gamas, /pending, /online, /ttr, /unspec, /asr, /providle, /asridle)._"""
 
 
+def generate_rekon_summary(tim_query: str) -> str:
+    rows = fetch_sheet_rows()
+    deduped = dedupe_rows(rows)
+    
+    now = datetime.now()
+    current_month_str = now.strftime("%Y-%m")
+    
+    filtered_rows = []
+    for r in deduped:
+        status_up = normalize_upper(r.get("Status"))
+        tim_val = normalize_upper(r.get("tim") or r.get("TIM"))
+        date_mod = normalize_text(r.get("Date Modified"))
+        
+        is_mtd = False
+        parsed_mod = parse_sheet_date(date_mod)
+        if parsed_mod and parsed_mod.startswith(current_month_str):
+            is_mtd = True
+            
+        if status_up == "COMPWORK" and tim_query.upper() in tim_val and is_mtd:
+            filtered_rows.append(r)
+            
+    if not filtered_rows:
+        return f"❌ Tidak ada data COMPWORK MTD untuk tim: {tim_query.upper()}"
+        
+    out = [f"*{tim_query.upper()}*"]
+    
+    for r in filtered_rows:
+        wo = normalize_text(r.get("Workorder")) or normalize_text(r.get("track_order")) or "-"
+        lensa_val = normalize_upper(r.get("LENSA"))
+        wecare_val = normalize_upper(r.get("WECARE"))
+        valins_val = normalize_upper(r.get("VALINS"))
+        
+        if "AREA 4" in lensa_val:
+            qc_stat = "QC NOK"
+        elif "COMPLY" in lensa_val:
+            qc_stat = "QC OK"
+        else:
+            qc_stat = "QC OK"
+        
+        if "AREA 4" in wecare_val or "NOK" in wecare_val:
+            wecare_stat = "WECARE NOK"
+        else:
+            wecare_stat = "WECARE OK"
+            
+        if "PSB" in valins_val or "NOK" in valins_val:
+            valins_stat = "VALINS NOK"
+        else:
+            valins_stat = "VALINS OK"
+            
+        out.append(f"{wo} | {qc_stat} | {wecare_stat} | {valins_stat}")
+        
+    return "\n".join(out)
+
+
 def generate_help_guide():
     return """🤖 *PANDUAN FITUR & DAFTAR COMMAND BOT MONITORING*
 
@@ -2437,6 +2491,25 @@ def telegram_webhook():
                 send_telegram_message(chat_id, f"⚠️ Gagal memproses /unspec: {str(ex)}")
             return "OK", 200
 
+        if cmd.startswith("/rekon"):
+            try:
+                parts = user_text.split(maxsplit=1)
+                if len(parts) < 2:
+                    send_telegram_message(chat_id, "⚠️ Format salah. Gunakan: `/rekon <nama_tim>`\nContoh: `/rekon BLC|ARIF-006`")
+                    return "OK", 200
+                tim_query = parts[1].strip()
+                rekon_msg = generate_rekon_summary(tim_query)
+                if len(rekon_msg) > 4000:
+                    chunks = [rekon_msg[i:i+4000] for i in range(0, len(rekon_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, rekon_msg)
+            except Exception as ex:
+                print(f"Error in /rekon command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /rekon: {str(ex)}")
+            return "OK", 200
+
         if cmd.startswith("/prov") or cmd.startswith("/pso") or cmd.startswith("/summary") or cmd == "provisioning":
             manual_msg = generate_manual_summary()
             send_telegram_message(chat_id, manual_msg)
@@ -2495,6 +2568,64 @@ Pertanyaan pengguna ({user_name}):
             print("AI Error, falling back to help guide:", e)
             help_msg = generate_help_guide()
             send_telegram_message(chat_id, help_msg)
+
+    return "OK", 200
+
+
+REKON_BOT_TOKEN = "8497218740:AAF9bUVlQdHUKlKB8VMSLTs_b8Dbm_k33m4"
+
+def send_telegram_message_rekon(chat_id, text):
+    if not REKON_BOT_TOKEN:
+        return
+    url = f"https://api.telegram.org/bot{REKON_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        if res.status_code != 200:
+            payload_plain = {"chat_id": chat_id, "text": text}
+            requests.post(url, json=payload_plain, timeout=10)
+    except Exception as e:
+        print(f"Failed to send Telegram message rekon: {e}")
+
+@app.route("/api/telegram/webhook_rekon", methods=["POST"])
+def telegram_webhook_rekon():
+    update = request.get_json()
+    if not update:
+        return "OK", 200
+
+    if "message" in update and "text" in update["message"]:
+        chat_id = update["message"]["chat"]["id"]
+        user_text = update["message"]["text"]
+        cmd = user_text.strip().lower()
+
+        if cmd.startswith("/rekon"):
+            try:
+                parts = user_text.split(maxsplit=1)
+                if len(parts) < 2:
+                    send_telegram_message_rekon(chat_id, "⚠️ Format salah. Gunakan: `/rekon <nama_tim>`\nContoh: `/rekon BLC|ARIF-006`")
+                    return "OK", 200
+                tim_query = parts[1].strip()
+                send_telegram_message_rekon(chat_id, "⏳ *Sedang menarik data dari Google Sheets...*")
+                
+                rekon_msg = generate_rekon_summary(tim_query)
+                if len(rekon_msg) > 4000:
+                    chunks = [rekon_msg[i:i+4000] for i in range(0, len(rekon_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message_rekon(chat_id, c)
+                else:
+                    send_telegram_message_rekon(chat_id, rekon_msg)
+            except Exception as ex:
+                print(f"Error in /rekon command: {ex}")
+                send_telegram_message_rekon(chat_id, f"⚠️ Gagal memproses /rekon: {str(ex)}")
+            return "OK", 200
+        
+        elif cmd in {"/start", "/help"}:
+            send_telegram_message_rekon(chat_id, "Halo! Ini adalah Bot khusus Rekon.\nKetik `/rekon <nama_tim>` untuk mengecek data.\nContoh: `/rekon BLC|ARIF-006`")
+            return "OK", 200
 
     return "OK", 200
 
