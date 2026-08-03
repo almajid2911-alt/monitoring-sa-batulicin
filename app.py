@@ -1453,10 +1453,12 @@ def get_order_category_summary(r: dict) -> str:
     pname = normalize_upper(r.get("product_name") or "")
     tr = normalize_upper(r.get("track_order") or "")
     
-    if "INDIBIZ" in jo or "INDIBIZ" in pname:
+    if "INDIBIZ" in jo or "INDIBIZ" in pname or tr.startswith("SC"):
         return "INDIBIZ"
     elif jo in ["TIF", "VULA", "TIF/VULA"] or tr.startswith("TIF") or tr.startswith("VULA") or "VULA" in jo or "VULA" in pname:
         return "TIF / VULA"
+    elif jo == "PDA" or pname == "PDA" or tr.startswith("PDA"):
+        return "PDA"
     else:
         return "INDIHOME"
 
@@ -1532,7 +1534,14 @@ def generate_manual_summary():
     ogp_tif = sum(1 for r in tif_rows if normalize_upper(r.get("status morning")) == "SEDANG DIKERJAKAN")
     oke_tarik_tif = sum(1 for r in tif_rows if "OKE TARIK" in normalize_upper(r.get("status morning")) or "OKE TARIK" in normalize_upper(r.get("Status")))
 
-    # 4. Sisa Order Breakdown
+    # 4. PDA / MIGRATE
+    pda_rows = cats["PDA"]
+    ps_pda = sum(1 for r in pda_rows if is_ps_order(r))
+    pot_pda = sum(1 for r in pda_rows if any(k in normalize_upper(r.get("Status")) for k in potensi_kw) or any(k in normalize_upper(r.get("status morning")) for k in potensi_kw))
+    ogp_pda = sum(1 for r in pda_rows if normalize_upper(r.get("status morning")) == "SEDANG DIKERJAKAN")
+    oke_tarik_pda = sum(1 for r in pda_rows if "OKE TARIK" in normalize_upper(r.get("status morning")) or "OKE TARIK" in normalize_upper(r.get("Status")))
+
+    # 5. Sisa Order Breakdown
     dash = load_dashboard_data("", "", "")
     sisa_map = {"BLC": 0, "SER": 0, "STI": 0, "KPL": 0, "PGT": 0, "KIP": 0}
     if "sisa_pivot" in dash and "workzones" in dash["sisa_pivot"]:
@@ -1573,6 +1582,14 @@ def generate_manual_summary():
     lines.append(f"• 🟦 Potensi : `{pot_tif}`")
     lines.append(f"• 🟧 Sedang OGP : `{ogp_tif}`")
     lines.append(f"• 🟩 OKE Tarik : `{oke_tarik_tif}`")
+
+    if pda_rows:
+        lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
+        lines.append("📱 *PDA / MIGRATE*")
+        lines.append(f"• ✅ PS Hari ini : `{ps_pda}`")
+        lines.append(f"• 🟦 Potensi : `{pot_pda}`")
+        lines.append(f"• 🟧 Sedang OGP : `{ogp_pda}`")
+        lines.append(f"• 🟩 OKE Tarik : `{oke_tarik_pda}`")
 
     lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
 
