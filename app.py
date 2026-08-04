@@ -1686,10 +1686,10 @@ def generate_ttr_mepet_summary():
     rows = [t.to_dict() for t in all_tickets]
     
     cat_rules = [
-        ("💠 *HVC DIAMOND (0 - 2 Jam)*", lambda c, t, r: "DIAMOND" in c and 0.0 <= t <= 2.0),
-        ("💎 *HVC PLATINUM (3 - 5 Jam)*", lambda c, t, r: "PLATINUM" in c and 3.0 <= t <= 5.0),
+        ("💠 *HVC DIAMOND (0 - 3 Jam)*", lambda c, t, r: "DIAMOND" in c and 0.0 <= t <= 3.0),
+        ("💎 *HVC PLATINUM (3 - 6 Jam)*", lambda c, t, r: "PLATINUM" in c and 3.0 <= t <= 6.0),
         ("🥇 *HVC GOLD (9 - 12 Jam)*", lambda c, t, r: "GOLD" in c and 9.0 <= t <= 12.0),
-        ("👤 *REGULER (21 - 23 Jam)*", lambda c, t, r: classify_ticket(r) == "Reguler" and 21.0 <= t <= 23.0),
+        ("👤 *REGULER (21 - 24 Jam)*", lambda c, t, r: classify_ticket(r) == "Reguler" and 21.0 <= t <= 24.0),
     ]
 
     cat_results = []
@@ -1785,14 +1785,14 @@ def check_and_notify_ttr_mepet(periodic: bool = False):
             ttr_val = parse_ttr_val(r.get("ttr"))
 
             cat_label = None
-            if "DIAMOND" in ctype and 0.0 <= ttr_val <= 2.0:
-                cat_label = "💠 HVC Diamond (0-2 Jam)"
-            elif "PLATINUM" in ctype and 3.0 <= ttr_val <= 5.0:
-                cat_label = "💎 HVC Platinum (3-5 Jam)"
+            if "DIAMOND" in ctype and 0.0 <= ttr_val <= 3.0:
+                cat_label = "💠 HVC Diamond (0-3 Jam)"
+            elif "PLATINUM" in ctype and 3.0 <= ttr_val <= 6.0:
+                cat_label = "💎 HVC Platinum (3-6 Jam)"
             elif "GOLD" in ctype and 9.0 <= ttr_val <= 12.0:
                 cat_label = "🥇 HVC Gold (9-12 Jam)"
-            elif classify_ticket(r) == "Reguler" and 21.0 <= ttr_val <= 23.0:
-                cat_label = "👤 Reguler (21-23 Jam)"
+            elif classify_ticket(r) == "Reguler" and 21.0 <= ttr_val <= 24.0:
+                cat_label = "👤 Reguler (21-24 Jam)"
 
             if cat_label:
                 all_mepet_tickets.append((r, cat_label, ttr_val))
@@ -2466,7 +2466,7 @@ def generate_help_guide():
 🚨 `/asridle` : Laporan Tiket Assurance Undispatch & Belum Dikerjakan
 🚨 `/gamas` : Cek tiket GAMAS per Workzone (lengkap sebaran ODP)
 🟢 `/online` : Cek tiket Redaman Online (max -24 dB) per Workzone
-⚠️ `/ttr` : Cek tiket TTR mepet (Diamond 0-2h, Platinum 3-5h, Gold 9-12h, Reguler 21-23h) & Auto Japri Alert
+⚠️ `/ttr` : Cek tiket TTR mepet (Diamond 0-3h, Platinum 3-6h, Gold 9-12h, Reguler 21-24h) & Auto Japri Alert
 📋 `/unspec` : Cek tiket UNSPEC (PL-TSEL Unspecified) per Workzone
 
 📌 *COMMAND PROVISIONING (PASANG BARU)*
