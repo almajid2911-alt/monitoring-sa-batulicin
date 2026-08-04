@@ -1844,10 +1844,10 @@ def start_ttr_mepet_worker():
     ttr_worker_started = True
 
     def worker_loop():
-        print("Starting TTR Mepet 40-minute background worker...")
+        print("Starting TTR Mepet 1-hour background worker...")
         while True:
             try:
-                time.sleep(40 * 60) # 40 minutes interval
+                time.sleep(60 * 60) # 1 hour interval
                 now_utc = datetime.now(timezone.utc)
                 now_wita = now_utc + timedelta(hours=8)
                 wita_hour = now_wita.hour
