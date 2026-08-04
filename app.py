@@ -670,6 +670,11 @@ def sync_assurance_tickets() -> int:
             AssuranceTicket.query.filter(AssuranceTicket.incident.in_(ids_to_delete)).delete(synchronize_session=False)
 
         db.session.commit()
+        try:
+            check_and_notify_ttr_mepet()
+        except Exception as ex_ttr:
+            print(f"Notice in check_and_notify_ttr_mepet call: {ex_ttr}")
+
         return synced_count
     except Exception as e:
         print(f"Error syncing assurance tickets: {e}")
@@ -1655,42 +1660,167 @@ def is_sqm_or_unspec(summary_str: str) -> bool:
     return ("SQM" in s) or ("UNSPEC" in s) or ("UNSPEK" in s)
 
 
+def classify_ticket(r: dict) -> str:
+    summary = (r.get("summary") or "").upper()
+    cust_type = (r.get("customer_type") or "").upper()
+    cust_seg = (r.get("customer_segment") or "").upper()
+    
+    if cust_seg == "RBS" or "RBS" in summary or "RBS" in cust_type:
+        return "RBS"
+    if "SQM" in summary:
+        return "SQM"
+    if "UNSPEC" in summary or "UNSPEK" in summary:
+        return "Unspec"
+    if "GOLD" in cust_type:
+        return "HVC Gold"
+    if "PLATINUM" in cust_type:
+        return "HVC Platinum"
+    if "DIAMOND" in cust_type:
+        return "HVC Diamond"
+    return "Reguler"
+
+
 def generate_ttr_mepet_summary():
     all_tickets = AssuranceTicket.query.all()
     rows = [t.to_dict() for t in all_tickets]
     
-    ttr_rows = []
-    for r in rows:
-        seg = normalize_upper(r.get("customer_segment"))
-        ctype = normalize_upper(r.get("customer_type"))
-        ttr_val = parse_ttr_val(r.get("ttr"))
-        
-        if seg == "PL-TSEL" and "GOLD" in ctype:
-            if 9.0 <= ttr_val <= 12.0:
-                if not is_sqm_or_unspec(r.get("summary")) and not is_gamas_ticket(r):
-                    ttr_rows.append((r, ttr_val))
+    cat_rules = [
+        ("💠 *HVC DIAMOND (0 - 2 Jam)*", lambda c, t, r: "DIAMOND" in c and 0.0 <= t <= 2.0),
+        ("💎 *HVC PLATINUM (3 - 5 Jam)*", lambda c, t, r: "PLATINUM" in c and 3.0 <= t <= 5.0),
+        ("🥇 *HVC GOLD (9 - 12 Jam)*", lambda c, t, r: "GOLD" in c and 9.0 <= t <= 12.0),
+        ("👤 *REGULER (21 - 23 Jam)*", lambda c, t, r: classify_ticket(r) == "Reguler" and 21.0 <= t <= 23.0),
+    ]
 
-    if not ttr_rows:
-        return "Tidak ada tiket HVC Gold dengan TTR mepet (9-12 jam) saat ini."
+    cat_results = []
+    total_mepet_count = 0
 
-    grouped = defaultdict(list)
-    for r, ttr_val in ttr_rows:
-        wz = normalize_text(r.get("workzone") or "KOSONG").upper()
-        grouped[wz].append((r, ttr_val))
+    for cat_title, check_fn in cat_rules:
+        matching_rows = []
+        for r in rows:
+            summary = (r.get("summary") or "").upper()
+            ctype = (r.get("customer_type") or "").upper()
+            if is_sqm_or_unspec(summary) or is_sqm_or_unspec(ctype) or is_gamas_ticket(r):
+                continue
+            ttr_val = parse_ttr_val(r.get("ttr"))
+            if check_fn(ctype, ttr_val, r):
+                matching_rows.append((r, ttr_val))
 
-    lines = [f"⚠️ *MONITORING TTR MEPET 9-12 JAM ({len(ttr_rows)} Tiket)*\n"]
-    for wz in sorted(grouped.keys()):
-        lines.append(f"🏢 *WORKZONE {wz}*")
-        for r, ttr_val in grouped[wz]:
+        total_mepet_count += len(matching_rows)
+        cat_results.append((cat_title, matching_rows))
+
+    lines = [f"⚠️ *LAPORAN MONITORING TIKET TTR MEPET ({total_mepet_count} Tiket)*\n"]
+
+    for cat_title, matching_rows in cat_results:
+        lines.append(f"{cat_title} ({len(matching_rows)} Tiket)")
+        if matching_rows:
+            grouped_wz = defaultdict(list)
+            for r, ttr_val in matching_rows:
+                wz = normalize_text(r.get("workzone") or "KOSONG").upper()
+                grouped_wz[wz].append((r, ttr_val))
+            
+            for wz in sorted(grouped_wz.keys()):
+                lines.append(f"🏢 *WORKZONE {wz}*")
+                for r, ttr_val in grouped_wz[wz]:
+                    inc = r.get("incident") or "-"
+                    raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
+                    odc = clean_odp_code(raw_odc)
+                    tim = r.get("tim") or r.get("tim_kawan") or r.get("tim_insera") or "-"
+                    ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+                    lines.append(f"• `{inc}` • `{odc}` • `{tim}` • `{ttr_str} jam`")
+        else:
+            lines.append("• Tidak ada tiket mepet pada kategori ini.")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+SUBSCRIBED_CHATS_FILE = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'subscribed_chats.json')
+NOTIFIED_TTR_FILE = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'notified_ttr.json')
+
+
+def load_json_set(filepath: str) -> set:
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+                return set(data)
+        except Exception:
+            pass
+    return set()
+
+
+def save_json_set(filepath: str, data_set: set):
+    try:
+        with open(filepath, 'w') as f:
+            json.dump(list(data_set), f)
+    except Exception:
+        pass
+
+
+def check_and_notify_ttr_mepet():
+    try:
+        subscribed_chats = load_json_set(SUBSCRIBED_CHATS_FILE)
+        if not subscribed_chats:
+            return
+
+        notified_incidents = load_json_set(NOTIFIED_TTR_FILE)
+
+        all_tickets = AssuranceTicket.query.all()
+        rows = [t.to_dict() for t in all_tickets]
+
+        new_mepet_tickets = []
+        for r in rows:
+            inc = r.get("incident")
+            if not inc or inc in notified_incidents:
+                continue
+
+            summary = (r.get("summary") or "").upper()
+            ctype = (r.get("customer_type") or "").upper()
+            if is_sqm_or_unspec(summary) or is_sqm_or_unspec(ctype) or is_gamas_ticket(r):
+                continue
+
+            ttr_val = parse_ttr_val(r.get("ttr"))
+
+            cat_label = None
+            if "DIAMOND" in ctype and 0.0 <= ttr_val <= 2.0:
+                cat_label = "💠 HVC Diamond (0-2 Jam)"
+            elif "PLATINUM" in ctype and 3.0 <= ttr_val <= 5.0:
+                cat_label = "💎 HVC Platinum (3-5 Jam)"
+            elif "GOLD" in ctype and 9.0 <= ttr_val <= 12.0:
+                cat_label = "🥇 HVC Gold (9-12 Jam)"
+            elif classify_ticket(r) == "Reguler" and 21.0 <= ttr_val <= 23.0:
+                cat_label = "👤 Reguler (21-23 Jam)"
+
+            if cat_label:
+                new_mepet_tickets.append((r, cat_label, ttr_val))
+                notified_incidents.add(inc)
+
+        if not new_mepet_tickets:
+            return
+
+        save_json_set(NOTIFIED_TTR_FILE, notified_incidents)
+
+        lines = ["🚨 *ALERT AUTOMATIS TIKET TTR MEPET!*"]
+        lines.append(f"Ditemukan {len(new_mepet_tickets)} tiket baru yang mendekati batas SLA TTR:\n")
+        for r, cat_label, ttr_val in new_mepet_tickets:
             inc = r.get("incident") or "-"
             raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
             odc = clean_odp_code(raw_odc)
             tim = r.get("tim") or r.get("tim_kawan") or r.get("tim_insera") or "-"
             ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            lines.append(f"`{inc}` • `{odc}` • `{tim}` • `{ttr_str} jam`")
-        lines.append("")
+            lines.append(f"• *{cat_label}*")
+            lines.append(f"  `{inc}` • `{odc}` • `{tim}` • `{ttr_str} jam`\n")
 
-    return "\n".join(lines).strip()
+        lines.append("⚠️ _Segera lakukan penanganan di lapangan sebelum batas TTR habis!_")
+        alert_msg = "\n".join(lines).strip()
+
+        for cid in list(subscribed_chats):
+            try:
+                send_telegram_message(cid, alert_msg)
+            except Exception as ex:
+                print(f"Failed to auto-japri alert to {cid}: {ex}")
+    except Exception as e:
+        print(f"Error in check_and_notify_ttr_mepet: {e}")
 
 
 def generate_online_redaman_summary():
@@ -2291,7 +2421,7 @@ def generate_help_guide():
 🚨 `/asridle` : Laporan Tiket Assurance Undispatch & Belum Dikerjakan
 🚨 `/gamas` : Cek tiket GAMAS per Workzone (lengkap sebaran ODP)
 🟢 `/online` : Cek tiket Redaman Online (max -24 dB) per Workzone
-⚠️ `/ttr` : Cek tiket HVC Gold TTR mepet (9 - 12 jam) per Workzone
+⚠️ `/ttr` : Cek tiket TTR mepet (Diamond 0-2h, Platinum 3-5h, Gold 9-12h, Reguler 21-23h) & Auto Japri Alert
 📋 `/unspec` : Cek tiket UNSPEC (PL-TSEL Unspecified) per Workzone
 
 📌 *COMMAND PROVISIONING (PASANG BARU)*
@@ -2321,6 +2451,15 @@ def telegram_webhook():
         chat_id = update["message"]["chat"]["id"]
         user_text = update["message"]["text"]
         user_name = update["message"]["from"].get("first_name", "Pengguna")
+
+        # Auto register chat_id for TTR mepet alerts
+        try:
+            chats = load_json_set(SUBSCRIBED_CHATS_FILE)
+            if chat_id not in chats:
+                chats.add(chat_id)
+                save_json_set(SUBSCRIBED_CHATS_FILE, chats)
+        except Exception:
+            pass
 
         cmd = user_text.strip().lower()
         if cmd in {"/start", "/help", "help", "menu", "petunjuk", "command", "fitur", "info"} or cmd.startswith("/help") or cmd.startswith("/start"):
