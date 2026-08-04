@@ -6,6 +6,7 @@ import json
 import os
 import re
 import threading
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -1757,7 +1758,7 @@ def save_json_set(filepath: str, data_set: set):
         pass
 
 
-def check_and_notify_ttr_mepet():
+def check_and_notify_ttr_mepet(periodic: bool = False):
     try:
         subscribed_chats = load_json_set(SUBSCRIBED_CHATS_FILE)
         if not subscribed_chats:
@@ -1768,10 +1769,12 @@ def check_and_notify_ttr_mepet():
         all_tickets = AssuranceTicket.query.all()
         rows = [t.to_dict() for t in all_tickets]
 
+        all_mepet_tickets = []
         new_mepet_tickets = []
+
         for r in rows:
             inc = r.get("incident")
-            if not inc or inc in notified_incidents:
+            if not inc:
                 continue
 
             summary = (r.get("summary") or "").upper()
@@ -1792,17 +1795,26 @@ def check_and_notify_ttr_mepet():
                 cat_label = "👤 Reguler (21-23 Jam)"
 
             if cat_label:
-                new_mepet_tickets.append((r, cat_label, ttr_val))
-                notified_incidents.add(inc)
-
-        if not new_mepet_tickets:
-            return
+                all_mepet_tickets.append((r, cat_label, ttr_val))
+                if inc not in notified_incidents:
+                    new_mepet_tickets.append((r, cat_label, ttr_val))
+                    notified_incidents.add(inc)
 
         save_json_set(NOTIFIED_TTR_FILE, notified_incidents)
 
-        lines = ["🚨 *ALERT AUTOMATIS TIKET TTR MEPET!*"]
-        lines.append(f"Ditemukan {len(new_mepet_tickets)} tiket baru yang mendekati batas SLA TTR:\n")
-        for r, cat_label, ttr_val in new_mepet_tickets:
+        # Decide target list to send
+        target_list = all_mepet_tickets if periodic else new_mepet_tickets
+        if not target_list:
+            return
+
+        if periodic:
+            lines = ["🚨 *ALERT PERIODIK TIKET TTR MEPET (08:00 - 22:00 WITA)*"]
+            lines.append(f"Masih terdapat {len(target_list)} tiket aktif mendekati batas SLA TTR:\n")
+        else:
+            lines = ["🚨 *ALERT TIKET TTR MEPET BARU!*"]
+            lines.append(f"Ditemukan {len(target_list)} tiket baru mendekati batas SLA TTR:\n")
+
+        for r, cat_label, ttr_val in target_list:
             inc = r.get("incident") or "-"
             raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
             odc = clean_odp_code(raw_odc)
@@ -1821,6 +1833,39 @@ def check_and_notify_ttr_mepet():
                 print(f"Failed to auto-japri alert to {cid}: {ex}")
     except Exception as e:
         print(f"Error in check_and_notify_ttr_mepet: {e}")
+
+
+ttr_worker_started = False
+
+def start_ttr_mepet_worker():
+    global ttr_worker_started
+    if ttr_worker_started:
+        return
+    ttr_worker_started = True
+
+    def worker_loop():
+        print("Starting TTR Mepet 40-minute background worker...")
+        while True:
+            try:
+                time.sleep(40 * 60) # 40 minutes interval
+                now_utc = datetime.now(timezone.utc)
+                now_wita = now_utc + timedelta(hours=8)
+                wita_hour = now_wita.hour
+
+                # Operating hours: 08:00 WITA (8) to 22:00 WITA (22)
+                if 8 <= wita_hour < 22:
+                    with app.app_context():
+                        try:
+                            sync_assurance_tickets()
+                        except Exception as e_sync:
+                            print(f"Background sync error in TTR worker: {e_sync}")
+                        check_and_notify_ttr_mepet(periodic=True)
+            except Exception as ex:
+                print(f"Error in TTR mepet worker loop: {ex}")
+                time.sleep(60)
+
+    t = threading.Thread(target=worker_loop, daemon=True)
+    t.start()
 
 
 def generate_online_redaman_summary():
@@ -3143,6 +3188,7 @@ def init_db_migration():
 
 try:
     init_db_migration()
+    start_ttr_mepet_worker()
 except Exception as ex:
     print("init_db_migration error:", ex)
 
