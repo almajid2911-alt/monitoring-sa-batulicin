@@ -2052,6 +2052,25 @@ def generate_asr_summary() -> str:
         lines.append("• Tidak ada tiket HVC Diamond/Platinum saat ini.")
     lines.append("")
 
+    # 6. Reguler Detail
+    reguler_rows = [r for r in rows if classify_ticket(r) == "Reguler"]
+    sorted_reguler = sorted(reguler_rows, key=lambda x: clean_odc_real(x.get("device_name"), x.get("odc_real")))
+    reguler_detail_list = []
+    for r in sorted_reguler:
+        inc = r.get("incident") or "-"
+        odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+        ttr_val = parse_ttr(r.get("ttr"))
+        ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+        gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+        reguler_detail_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
+
+    lines.append(f"👤 *Reguler : {len(reguler_detail_list)}*")
+    if reguler_detail_list:
+        lines.extend(reguler_detail_list)
+    else:
+        lines.append("• Tidak ada tiket Reguler saat ini.")
+    lines.append("")
+
     # 6. Undispatch & Belum Dikerjakan
     undispatch_counts = {
         "HVC Gold": 0,
