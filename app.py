@@ -1837,6 +1837,14 @@ def save_json_set(filepath: str, data_set: set):
 
 def check_and_notify_ttr_mepet(periodic: bool = False):
     try:
+        # Batasi waktu pengiriman alert hanya pada jam operasional (08:00 - 22:00 WITA)
+        now_utc = datetime.now(timezone.utc)
+        now_wita = now_utc + timedelta(hours=8)
+        wita_hour = now_wita.hour
+        if not (8 <= wita_hour < 22):
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] TTR Mepet Alert skipped (outside operating hours: {wita_hour:02d}:00 WITA)")
+            return
+
         subscribed_chats = load_json_set(SUBSCRIBED_CHATS_FILE)
         if not subscribed_chats:
             return
