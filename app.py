@@ -171,13 +171,29 @@ def normalize_upper(value: str | None) -> str:
     return normalize_text(value).upper()
 
 
-def fetch_sheet_rows() -> list[dict[str, str]]:
+def fetch_csv_with_retry(url: str, max_retries: int = 3) -> str:
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
     }
-    response = requests.get(SHEET_CSV_URL, headers=headers, timeout=25)
-    response.raise_for_status()
-    content = response.content.decode("utf-8-sig", errors="replace")
+    last_exception = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            timeout_sec = 15 + (attempt * 10)  # Attempt 1: 25s, Attempt 2: 35s, Attempt 3: 45s
+            resp = requests.get(url, headers=headers, timeout=timeout_sec)
+            resp.raise_for_status()
+            return resp.content.decode("utf-8-sig", errors="replace")
+        except Exception as ex:
+            last_exception = ex
+            print(f"Attempt {attempt}/{max_retries} failed to fetch CSV from Google Sheets: {ex}")
+            if attempt < max_retries:
+                time.sleep(2 * attempt)
+    raise last_exception
+
+
+def fetch_sheet_rows() -> list[dict[str, str]]:
+    content = fetch_csv_with_retry(SHEET_CSV_URL)
     return list(csv.DictReader(io.StringIO(content)))
 
 
@@ -611,13 +627,7 @@ def sync_orders():
 
 def sync_assurance_tickets() -> int:
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        resp = requests.get(ASSURANCE_SHEET_CSV_URL, headers=headers, timeout=25)
-        resp.raise_for_status()
-        content = resp.content.decode('utf-8-sig', errors='replace')
-        
+        content = fetch_csv_with_retry(ASSURANCE_SHEET_CSV_URL)
         rows = list(csv.DictReader(io.StringIO(content)))
         valid_rows = [r for r in rows if normalize_text(r.get("INCIDENT"))]
 
@@ -723,6 +733,55 @@ def is_gamas_ticket(r: dict) -> bool:
 def get_is_manja(r: dict) -> str:
     desc = normalize_upper(r.get("description_assignment"))
     return "YES" if "CUSTOMER ASSIGN" in desc else "NO"
+
+
+MONTH_MAP_SHORT = {
+    1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MAY', 6: 'JUN',
+    7: 'JUL', 8: 'AUG', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DEC'
+}
+
+def parse_booking_datetime(val_str: str) -> str:
+    if not val_str or not str(val_str).strip():
+        return ""
+    s = str(val_str).strip()
+
+    m_aug = re.match(r"^(\d{1,2})[\-\s]+([A-Za-z]{3})[\-\s]+(\d{1,2}):(\d{2})", s)
+    if m_aug:
+        d, m, hh, mm = m_aug.groups()
+        return f"{int(d):02d}-{m.upper()} {int(hh):02d}:{mm}"
+
+    for fmt in [
+        "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
+        "%y-%m-%d %H:%M:%S", "%y-%m-%d %H:%M",
+        "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M",
+        "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M",
+        "%d-%m-%y %H:%M:%S", "%d-%m-%y %H:%M",
+        "%d/%m/%y %H:%M:%S", "%d/%m/%y %H:%M",
+    ]:
+        try:
+            dt = datetime.strptime(s, fmt)
+            m_str = MONTH_MAP_SHORT.get(dt.month, f"{dt.month:02d}")
+            return f"{dt.day:02d}-{m_str} {dt.hour:02d}:{dt.minute:02d}"
+        except ValueError:
+            pass
+
+    m_ymd = re.match(r"^(\d{2,4})[\-\/](\d{1,2})[\-\/](\d{1,2})\s+(\d{1,2}):(\d{2})", s)
+    if m_ymd:
+        p1, p2, p3, hh, mm = m_ymd.groups()
+        if len(p1) == 4 or int(p1) > 31:
+            day = int(p3)
+            month = int(p2)
+        else:
+            day = int(p1)
+            month = int(p2)
+        m_str = MONTH_MAP_SHORT.get(month, f"{month:02d}")
+        return f"{day:02d}-{m_str} {int(hh):02d}:{mm}"
+
+    m_time = re.search(r"(\d{1,2}):(\d{2})", s)
+    if m_time:
+        return f"{int(m_time.group(1)):02d}:{m_time.group(2)}"
+
+    return s
 
 
 def load_assurance_data(sektor: str = "", wilsus: str = "", jenis_tiket: str = "") -> dict:
@@ -1866,25 +1925,32 @@ def start_ttr_mepet_worker():
     ttr_worker_started = True
 
     def worker_loop():
-        print("Starting TTR Mepet 1-hour background worker...")
+        print("Starting Auto-Sync & TTR Mepet 1-hour background worker...")
+        time.sleep(10) # Jeda awal 10 detik agar server siap
         while True:
             try:
-                time.sleep(60 * 60) # 1 hour interval
                 now_utc = datetime.now(timezone.utc)
                 now_wita = now_utc + timedelta(hours=8)
                 wita_hour = now_wita.hour
 
-                # Operating hours: 08:00 WITA (8) to 22:00 WITA (22)
-                if 8 <= wita_hour < 22:
-                    with app.app_context():
+                with app.app_context():
+                    # 1. Auto /sync diam-diam (Provisioning + Assurance)
+                    try:
+                        c_orders = sync_orders()
+                        c_asr = sync_assurance_tickets()
+                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Silent Auto-Sync: {c_orders} orders & {c_asr} tickets updated.")
+                    except Exception as e_sync:
+                        print(f"Silent Auto-Sync error: {e_sync}")
+
+                    # 2. Operating hours: 08:00 WITA (8) to 22:00 WITA (22) for periodic TTR alert summary
+                    if 8 <= wita_hour < 22:
                         try:
-                            sync_assurance_tickets()
-                        except Exception as e_sync:
-                            print(f"Background sync error in TTR worker: {e_sync}")
-                        check_and_notify_ttr_mepet(periodic=True)
+                            check_and_notify_ttr_mepet(periodic=True)
+                        except Exception as e_ttr:
+                            print(f"Periodic TTR alert error: {e_ttr}")
             except Exception as ex:
-                print(f"Error in TTR mepet worker loop: {ex}")
-                time.sleep(60)
+                print(f"Error in background worker loop: {ex}")
+            time.sleep(60 * 60) # 1 hour interval
 
     t = threading.Thread(target=worker_loop, daemon=True)
     t.start()
@@ -2131,20 +2197,15 @@ def generate_asr_summary() -> str:
     manja_rows = []
     for r in rows:
         desc = (r.get("description_assignment") or "").upper()
-        if "CUSTOMER ASSIGN" in desc or (r.get("jam_manja") or "").strip():
+        if "CUSTOMER ASSIGN" in desc or (r.get("jam_manja") or "").strip() or (r.get("booking_date") or "").strip():
             manja_rows.append(r)
 
     sorted_manja = sorted(manja_rows, key=lambda x: clean_odc_real(x.get("device_name"), x.get("odc_real")))
     manja_list = []
     for r in sorted_manja:
-        jm = (r.get("jam_manja") or r.get("booking_date") or "").strip()
-        if jm and " " in jm and len(jm) > 10:
-            time_part = jm.split()[1][:5]
-            jm_str = f" {time_part}"
-        elif jm:
-            jm_str = f" {jm}"
-        else:
-            jm_str = ""
+        jm_raw = (r.get("booking_date") or r.get("jam_manja") or "").strip()
+        jm_formatted = parse_booking_datetime(jm_raw)
+        jm_str = f" {jm_formatted}" if jm_formatted else ""
 
         inc = r.get("incident") or "-"
         odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
