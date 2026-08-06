@@ -1518,7 +1518,7 @@ def call_openrouter_api(prompt):
 
 
 def get_order_category_summary(r: dict) -> str:
-    jo = normalize_upper(r.get("jenis_order") or get_product_name_normalized(r) or "")
+    jo = normalize_upper(r.get("jenis_order") or "")
     pname = normalize_upper(r.get("product_name") or "")
     tr = normalize_upper(r.get("track_order") or "")
     
@@ -1528,8 +1528,10 @@ def get_order_category_summary(r: dict) -> str:
         return "TIF / VULA"
     elif jo == "PDA" or pname == "PDA" or "PDA" in tr:
         return "PDA"
-    else:
+    elif jo == "INDIHOME" or pname == "INDIHOME" or tr.startswith("AO") or tr.startswith("MYIR") or tr.startswith("IN"):
         return "INDIHOME"
+    else:
+        return "UNKNOWN"
 
 
 def generate_manual_summary():
