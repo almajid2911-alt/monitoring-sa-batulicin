@@ -48,6 +48,7 @@ class Order(db.Model):
     validasi = db.Column(db.String(100))
     jenis_order = db.Column(db.String(100))
     service_no = db.Column(db.String(100))
+    owner_group = db.Column(db.String(255))
 
     def to_dict(self):
         return {
@@ -77,7 +78,8 @@ class Order(db.Model):
             "eskal_daman": self.eskal_daman,
             "validasi": self.validasi,
             "jenis_order": self.jenis_order or "",
-            "service_no": self.service_no or ""
+            "service_no": self.service_no or "",
+            "owner_group": self.owner_group or ""
         }
 
 
@@ -298,7 +300,7 @@ def get_product_name_normalized(row: dict) -> str:
     product_name = normalize_upper(row.get("product_name") or row.get("Product Name") or "")
     tr_order = normalize_upper(row.get("track_order") or row.get("track_order") or "")
     if not product_name or product_name in {"-", "UNKNOWN", ""}:
-        if tr_order.startswith("PDA"):
+        if "PDA" in tr_order:
             return "PDA"
         elif tr_order.startswith("SC"):
             return "INDIBIZ"
@@ -576,6 +578,7 @@ def sync_orders():
             update_if_changed(existing, "validasi", normalize_text(row_dict.get("cek qc") or row_dict.get("VALIDASI") or row_dict.get("validasi")))
             update_if_changed(existing, "jenis_order", normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper())
             update_if_changed(existing, "service_no", normalize_text(row_dict.get("Service No.") or row_dict.get("Service No") or row_dict.get("service_no")))
+            update_if_changed(existing, "owner_group", normalize_text(row_dict.get("Owner Group")))
         else:
             new_order = Order(
                 track_order=tr_order,
@@ -605,7 +608,8 @@ def sync_orders():
                 eskal_daman=normalize_text(row_dict.get("Eskal daman") or row_dict.get("eskal_daman")),
                 validasi=normalize_text(row_dict.get("cek qc") or row_dict.get("VALIDASI") or row_dict.get("validasi")),
                 jenis_order=normalize_text(row_dict.get("jenis order") or row_dict.get("Jenis Order")).upper(),
-                service_no=normalize_text(row_dict.get("Service No.") or row_dict.get("Service No") or row_dict.get("service_no"))
+                service_no=normalize_text(row_dict.get("Service No.") or row_dict.get("Service No") or row_dict.get("service_no")),
+                owner_group=normalize_text(row_dict.get("Owner Group"))
             )
             db.session.add(new_order)
             existing_orders[tr_order] = new_order
@@ -1522,7 +1526,7 @@ def get_order_category_summary(r: dict) -> str:
         return "INDIBIZ"
     elif jo in ["TIF", "VULA", "TIF/VULA"] or tr.startswith("TIF") or tr.startswith("VULA") or "VULA" in jo or "VULA" in pname:
         return "TIF / VULA"
-    elif jo == "PDA" or pname == "PDA" or tr.startswith("PDA"):
+    elif jo == "PDA" or pname == "PDA" or "PDA" in tr:
         return "PDA"
     else:
         return "INDIHOME"
@@ -3274,6 +3278,13 @@ def init_db_migration():
                     print("Migrated order table with service_no column")
                 except Exception as ex:
                     print("Note adding service_no:", ex)
+            if "owner_group" not in order_cols:
+                try:
+                    cursor.execute('ALTER TABLE "order" ADD COLUMN owner_group VARCHAR(255)')
+                    conn.commit()
+                    print("Migrated order table with owner_group column")
+                except Exception as ex:
+                    print("Note adding owner_group:", ex)
         except Exception as e:
             print("DB Migration Note:", e)
 
