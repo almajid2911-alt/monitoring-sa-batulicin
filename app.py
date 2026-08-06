@@ -1548,9 +1548,6 @@ def generate_retoday_summary() -> str:
         if cat == "INDIHOME" and r.get("date_created_parsed") == today_wita:
             re_indihome_rows.append(r)
 
-    # Sort by track_order
-    re_indihome_rows = sorted(re_indihome_rows, key=lambda x: x.get("track_order") or "")
-
     def is_ps_order(r):
         st_up = normalize_upper(r.get("Status"))
         sm_up = normalize_upper(r.get("status morning"))
@@ -1570,6 +1567,8 @@ def generate_retoday_summary() -> str:
     table_lines.append("track_order | status morning | ODC")
     table_lines.append("-" * 50)
     
+    processed_rows = []
+    
     ps_count = 0
     ogp_count = 0
     oke_tarik_count = 0
@@ -1578,7 +1577,6 @@ def generate_retoday_summary() -> str:
     
     for r in re_indihome_rows:
         track = r.get("track_order") or "-"
-        
         is_ps = is_ps_order(r)
         sm_raw = r.get("status morning") or ""
         sm_clean = sm_raw.strip()
@@ -1602,7 +1600,31 @@ def generate_retoday_summary() -> str:
                 others_count += 1
                 
         odc = r.get("ODC") or "-"
-        table_lines.append(f"{track} | {sm_display} | {odc} |")
+        processed_rows.append({
+            "track": track,
+            "sm_display": sm_display,
+            "odc": odc
+        })
+        
+    def get_sort_weight(sm):
+        sm_up = sm.upper()
+        if sm_up == "PS (OK)":
+            return 0
+        elif sm_up == "SEDANG DIKERJAKAN":
+            return 1
+        elif "OKE TARIK" in sm_up:
+            return 2
+        elif "PENDING" in sm_up:
+            return 3
+        elif sm_up == "-":
+            return 5
+        else:
+            return 4
+            
+    sorted_rows = sorted(processed_rows, key=lambda x: (get_sort_weight(x["sm_display"]), x["sm_display"], x["track"]))
+    
+    for row in sorted_rows:
+        table_lines.append(f"{row['track']} | {row['sm_display']} | {row['odc']} |")
         
     table_content = "\n".join(table_lines)
     lines.append(f"```\n{table_content}\n```")
