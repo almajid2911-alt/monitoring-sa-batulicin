@@ -1534,6 +1534,98 @@ def get_order_category_summary(r: dict) -> str:
         return "UNKNOWN"
 
 
+def generate_retoday_summary() -> str:
+    now_utc = datetime.now(timezone.utc)
+    now_wita = now_utc + timedelta(hours=8)
+    today_wita = now_wita.strftime("%Y-%m-%d")
+
+    all_orders = Order.query.all()
+    all_rows = [o.to_dict() for o in all_orders]
+
+    re_indihome_rows = []
+    for r in all_rows:
+        cat = get_order_category_summary(r)
+        if cat == "INDIHOME" and r.get("date_created_parsed") == today_wita:
+            re_indihome_rows.append(r)
+
+    # Sort by track_order
+    re_indihome_rows = sorted(re_indihome_rows, key=lambda x: x.get("track_order") or "")
+
+    def is_ps_order(r):
+        st_up = normalize_upper(r.get("Status"))
+        sm_up = normalize_upper(r.get("status morning"))
+        dt_st = r.get("status_date_parsed")
+        tgl_ps = r.get("tgl_ps_parsed")
+        if (dt_st == today_wita or tgl_ps == today_wita):
+            if any(k in st_up for k in ["COMPWORK", "PS", "COMPLETED"]) or any(k in sm_up for k in ["COMPWORK", "PS", "COMPLETED"]):
+                return True
+        return False
+
+    lines = []
+    lines.append(f"📋 *DETAIL RE INDIHOME HARI INI ({today_wita})*")
+    lines.append("")
+    
+    # Table Header
+    table_lines = []
+    table_lines.append("track_order | status morning | ODC")
+    table_lines.append("-" * 50)
+    
+    ps_count = 0
+    ogp_count = 0
+    oke_tarik_count = 0
+    pending_count = 0
+    others_count = 0
+    
+    for r in re_indihome_rows:
+        track = r.get("track_order") or "-"
+        
+        is_ps = is_ps_order(r)
+        sm_raw = r.get("status morning") or ""
+        sm_clean = sm_raw.strip()
+        
+        if is_ps:
+            sm_display = "PS (OK)"
+            ps_count += 1
+        else:
+            sm_upper = sm_clean.upper()
+            if "SEDANG DIKERJAKAN" in sm_upper or "OGP" in sm_upper:
+                sm_display = "SEDANG DIKERJAKAN"
+                ogp_count += 1
+            elif "OKE TARIK" in sm_upper:
+                sm_display = "OKE TARIK"
+                oke_tarik_count += 1
+            elif "PENDING" in sm_upper:
+                sm_display = "PENDING"
+                pending_count += 1
+            else:
+                sm_display = sm_clean if sm_clean else "-"
+                others_count += 1
+                
+        odc = r.get("ODC") or "-"
+        table_lines.append(f"{track} | {sm_display} | {odc} |")
+        
+    table_content = "\n".join(table_lines)
+    lines.append(f"```\n{table_content}\n```")
+    lines.append("")
+    
+    # Summary
+    lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("📊 *RINGKASAN STATUS RE*")
+    total_re = len(re_indihome_rows)
+    lines.append(f"• Total Order RE : `{total_re}`")
+    lines.append(f"• ✅ PS (OK) : `{ps_count}`")
+    lines.append(f"• 🟧 Sedang OGP : `{ogp_count}`")
+    lines.append(f"• 🟩 Oke Tarik : `{oke_tarik_count}`")
+    lines.append(f"• ⏳ Pending : `{pending_count}`")
+    lines.append(f"• 📁 Lain-lain : `{others_count}`")
+    lines.append("")
+    
+    ratio = (ps_count / total_re * 100) if total_re > 0 else 0.0
+    lines.append(f"📈 *Persentase Progres PS/RE:* `{ratio:.1f}%`")
+    
+    return "\n".join(lines)
+
+
 def generate_manual_summary():
     now_utc = datetime.now(timezone.utc)
     now_wita = now_utc + timedelta(hours=8)
@@ -2571,6 +2663,7 @@ def generate_help_guide():
 📦 `/providle` : Laporan Order Provisioning Undispatch & Belum Dikerjakan
 🌅 `/psbsore` : Cek Order Sedang OGP dan Total Potensi
 🟡 `/pending` : Cek Order PENDING beserta catatan kendala per Workzone
+📋 `/retoday` : Detail RE Indihome hari ini (Nomor Track, Status, ODC, Summary)
 
 💬 *BOT INTERAKTIF*
 Anda juga bisa bertanya langsung menggunakan bahasa alami:
@@ -2757,6 +2850,20 @@ def telegram_webhook():
         if cmd.startswith("/prov") or cmd.startswith("/pso") or cmd.startswith("/summary") or cmd == "provisioning":
             manual_msg = generate_manual_summary()
             send_telegram_message(chat_id, manual_msg)
+            return "OK", 200
+
+        if cmd.startswith("/retoday"):
+            try:
+                retoday_msg = generate_retoday_summary()
+                if len(retoday_msg) > 4000:
+                    chunks = [retoday_msg[i:i+4000] for i in range(0, len(retoday_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, retoday_msg)
+            except Exception as ex:
+                print(f"Error in /retoday command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /retoday: {str(ex)}")
             return "OK", 200
 
         # Fetch current data for AI
