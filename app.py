@@ -1881,12 +1881,12 @@ def generate_ttr_mepet_summary():
     rows = [t.to_dict() for t in all_tickets]
     
     cat_rules = [
-        ("💠 *HVC DIAMOND (0 - 3 Jam)*", lambda c, t, r: "DIAMOND" in c and 0.0 <= t <= 3.0),
-        ("💎 *HVC PLATINUM (3 - 6 Jam)*", lambda c, t, r: "PLATINUM" in c and 3.0 <= t <= 6.0),
-        ("🥇 *HVC GOLD (9 - 12 Jam)*", lambda c, t, r: "GOLD" in c and 9.0 <= t <= 12.0),
+        ("💠 *HVC DIAMOND (1 - 3 Jam)*", lambda c, t, r: "DIAMOND" in c and 1.0 <= t <= 3.0),
+        ("💎 *HVC PLATINUM (4 - 6 Jam)*", lambda c, t, r: "PLATINUM" in c and 4.0 <= t <= 6.0),
+        ("🥇 *HVC GOLD (10 - 12 Jam)*", lambda c, t, r: "GOLD" in c and 10.0 <= t <= 12.0),
         ("🏢 *RBS (18 - 20 Jam)*", lambda c, t, r: classify_ticket(r) == "RBS" and 18.0 <= t <= 20.0),
-        ("👤 *REGULER (21 - 24 Jam)*", lambda c, t, r: classify_ticket(r) == "Reguler" and 21.0 <= t <= 24.0),
-        ("🛡️ *GARANSI (0 - 3 Jam)*", lambda c, t, r: is_garansi_ticket(r) and 0.0 <= t <= 3.0),
+        ("👤 *REGULER (22 - 24 Jam)*", lambda c, t, r: classify_ticket(r) == "Reguler" and 22.0 <= t <= 24.0),
+        ("🛡️ *GARANSI (1 - 3 Jam)*", lambda c, t, r: is_garansi_ticket(r) and 1.0 <= t <= 3.0),
     ]
 
     cat_results = []
@@ -1987,21 +1987,19 @@ def check_and_notify_ttr_mepet(periodic: bool = False):
             if is_sqm_or_unspec(summary) or is_sqm_or_unspec(ctype) or is_gamas_ticket(r):
                 continue
 
-            ttr_val = parse_ttr_val(r.get("ttr"))
-
             cat_label = None
-            if "DIAMOND" in ctype and 0.0 <= ttr_val <= 3.0:
-                cat_label = "💠 HVC Diamond (0-3 Jam)"
-            elif "PLATINUM" in ctype and 3.0 <= ttr_val <= 6.0:
-                cat_label = "💎 HVC Platinum (3-6 Jam)"
-            elif "GOLD" in ctype and 9.0 <= ttr_val <= 12.0:
-                cat_label = "🥇 HVC Gold (9-12 Jam)"
+            if "DIAMOND" in ctype and 1.0 <= ttr_val <= 3.0:
+                cat_label = "💠 HVC Diamond (1-3 Jam)"
+            elif "PLATINUM" in ctype and 4.0 <= ttr_val <= 6.0:
+                cat_label = "💎 HVC Platinum (4-6 Jam)"
+            elif "GOLD" in ctype and 10.0 <= ttr_val <= 12.0:
+                cat_label = "🥇 HVC Gold (10-12 Jam)"
             elif classify_ticket(r) == "RBS" and 18.0 <= ttr_val <= 20.0:
                 cat_label = "🏢 RBS (18-20 Jam)"
-            elif classify_ticket(r) == "Reguler" and 21.0 <= ttr_val <= 24.0:
-                cat_label = "👤 Reguler (21-24 Jam)"
-            elif is_garansi_ticket(r) and 0.0 <= ttr_val <= 3.0:
-                cat_label = "🛡️ Garansi (0-3 Jam)"
+            elif classify_ticket(r) == "Reguler" and 22.0 <= ttr_val <= 24.0:
+                cat_label = "👤 Reguler (22-24 Jam)"
+            elif is_garansi_ticket(r) and 1.0 <= ttr_val <= 3.0:
+                cat_label = "🛡️ Garansi (1-3 Jam)"
 
             if cat_label:
                 all_mepet_tickets.append((r, cat_label, ttr_val))
@@ -2677,7 +2675,7 @@ def generate_help_guide():
 🚨 `/asridle` : Laporan Tiket Assurance Undispatch & Belum Dikerjakan
 🚨 `/gamas` : Cek tiket GAMAS per Workzone (lengkap sebaran ODP)
 🟢 `/online` : Cek tiket Redaman Online (max -24 dB) per Workzone
-⚠️ `/ttr` : Cek tiket TTR mepet (Diamond 0-3h, Platinum 3-6h, Gold 9-12h, RBS 18-20h, Reguler 21-24h, Garansi 0-3h) & Auto Alert
+⚠️ `/ttr` : Cek tiket TTR mepet (Diamond 1-3h, Platinum 4-6h, Gold 10-12h, RBS 18-20h, Reguler 22-24h, Garansi 1-3h) & Auto Alert
 📋 `/unspec` : Cek tiket UNSPEC (PL-TSEL Unspecified) per Workzone
 
 📌 *COMMAND PROVISIONING (PASANG BARU)*
