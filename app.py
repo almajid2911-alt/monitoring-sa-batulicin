@@ -155,7 +155,6 @@ class TelegramSubscriber(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     chat_id = db.Column(db.BigInteger, unique=True, nullable=False)
     username = db.Column(db.String(100))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 
