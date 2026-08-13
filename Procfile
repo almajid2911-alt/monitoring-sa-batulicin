@@ -1,1 +1,1 @@
-web: gunicorn app:app
+worker: python exif_editor_bot.py
