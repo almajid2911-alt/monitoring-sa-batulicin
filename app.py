@@ -2462,6 +2462,36 @@ def generate_asr_summary() -> str:
         lines.append("• Tidak ada tiket Garansi saat ini.")
     lines.append("")
 
+    # 4b. POTENSI GAUL
+    pg_rows = []
+    for r in rows:
+        pg_val = (r.get("potensi_gaul") or "").strip()
+        if not pg_val:
+            continue
+        summary = (r.get("summary") or "").upper()
+        ctype = (r.get("customer_type") or "").upper()
+        tinsera = (r.get("tim_insera") or "").upper()
+        if ("SQM" in summary) or ("SQM" in ctype) or ("SQM" in tinsera):
+            pg_rows.append((r, pg_val))
+
+    sorted_pg = sorted(pg_rows, key=lambda x: clean_odc_real(x[0].get("device_name"), x[0].get("odc_real")))
+    pg_list = []
+    for r, pg_val in sorted_pg:
+        inc = r.get("incident") or "-"
+        odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
+        ttr_val = parse_ttr(r.get("ttr"))
+        ttr_str = f"{ttr_val:.2f}".replace('.', ',')
+        tim = r.get("tim") or r.get("tim_kawan") or r.get("tim_insera") or "-"
+        gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
+        pg_list.append(f"• `{inc}` `{odp}` `{tim}` `{pg_val}` `{ttr_str}`{gamas_flag}")
+
+    lines.append(f"🔄 *POTENSI GAUL : {len(pg_list)}*")
+    if pg_list:
+        lines.extend(pg_list)
+    else:
+        lines.append("• Tidak ada tiket Potensi Gaul saat ini.")
+    lines.append("")
+
     # 5. HVC Gold Detail
     gold_rows = []
     for r in rows:
