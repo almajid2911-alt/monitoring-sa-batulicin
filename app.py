@@ -3472,11 +3472,41 @@ def init_db_migration():
         except Exception as e:
             print("DB Migration Note:", e)
 
+def setup_telegram_bot_commands():
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    commands = [
+        {"command": "prov", "description": "📊 Summary Provisioning & Sisa Order"},
+        {"command": "asr", "description": "📊 Summary Tiket Gangguan (Assurance)"},
+        {"command": "psbsore", "description": "🌅 Order OGP & Potensi Sore"},
+        {"command": "gamas", "description": "🚨 Monitoring Tiket GAMAS"},
+        {"command": "ttr", "description": "⚠️ Monitoring Tiket TTR Mepet"},
+        {"command": "online", "description": "🟢 Tiket Redaman Online (max -24 dB)"},
+        {"command": "unspec", "description": "📋 Tiket UNSPEC per Workzone"},
+        {"command": "pending", "description": "🟡 Order PENDING per Workzone"},
+        {"command": "providle", "description": "📦 Provisioning Undispatch / Idle"},
+        {"command": "asridle", "description": "🚨 Assurance Undispatch / Idle"},
+        {"command": "retoday", "description": "📋 Detail RE Indihome Hari Ini"},
+        {"command": "sync", "description": "🔄 Sinkronisasi Data Google Sheet"},
+        {"command": "help", "description": "🤖 Panduan Menu & Fitur Bot"}
+    ]
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands"
+        res = requests.post(url, json={"commands": commands}, timeout=10)
+        if res.status_code == 200:
+            print("Telegram Bot Popup Menu Commands successfully registered!")
+        else:
+            print("Telegram setMyCommands note:", res.text)
+    except Exception as e:
+        print("Error registering Telegram bot commands:", e)
+
+
 try:
     init_db_migration()
+    setup_telegram_bot_commands()
     start_ttr_mepet_worker()
 except Exception as ex:
-    print("init_db_migration error:", ex)
+    print("Startup error:", ex)
 
 
 if __name__ == "__main__":
