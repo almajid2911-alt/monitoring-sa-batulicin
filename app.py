@@ -1938,32 +1938,6 @@ def generate_ttr_mepet_summary():
             lines.append("• Tidak ada tiket mepet pada kategori ini.")
         lines.append("")
 
-    # Section POTENSI GAUL (Tiket SQM dengan kolom POTENSI GAUL terisi)
-    pg_rows = []
-    for r in rows:
-        pg_val = (r.get("potensi_gaul") or "").strip()
-        if not pg_val:
-            continue
-        summary = (r.get("summary") or "").upper()
-        ctype = (r.get("customer_type") or "").upper()
-        tinsera = (r.get("tim_insera") or "").upper()
-        if ("SQM" in summary) or ("SQM" in ctype) or ("SQM" in tinsera):
-            ttr_val = parse_ttr_val(r.get("ttr"))
-            pg_rows.append((r, pg_val, ttr_val))
-
-    lines.append("━━━━━━━━━━━━━━━━━━━━━\n")
-    lines.append(f"🔄 *POTENSI GAUL ({len(pg_rows)} Tiket)*")
-    if pg_rows:
-        for r, pg_val, ttr_val in pg_rows:
-            inc = r.get("incident") or "-"
-            raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
-            odc = clean_odp_code(raw_odc)
-            tim = r.get("tim") or r.get("tim_kawan") or r.get("tim_insera") or "-"
-            ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-            lines.append(f"• `{inc}` • `{odc}` • `{tim}` • `{pg_val}` • `{ttr_str} jam`")
-    else:
-        lines.append("• Tidak ada tiket Potensi Gaul saat ini.")
-
     return "\n".join(lines).strip()
 
 
@@ -2053,29 +2027,13 @@ def check_and_notify_ttr_mepet(periodic: bool = False):
 
         save_json_set(NOTIFIED_TTR_FILE, notified_incidents)
 
-        # Check Potensi Gaul rows
-        pg_rows = []
-        for r in rows:
-            pg_val = (r.get("potensi_gaul") or "").strip()
-            if not pg_val:
-                continue
-            summary = (r.get("summary") or "").upper()
-            ctype = (r.get("customer_type") or "").upper()
-            tinsera = (r.get("tim_insera") or "").upper()
-            if ("SQM" in summary) or ("SQM" in ctype) or ("SQM" in tinsera):
-                ttr_val = parse_ttr_val(r.get("ttr"))
-                pg_rows.append((r, pg_val, ttr_val))
-
         target_list = all_mepet_tickets if periodic else new_mepet_tickets
-        if not target_list and not pg_rows:
+        if not target_list:
             return
 
         if periodic:
             lines = ["🚨 *ALERT PERIODIK TIKET TTR MEPET (08:00 - 22:00 WITA)*"]
-            if target_list:
-                lines.append(f"Masih terdapat {len(target_list)} tiket aktif mendekati batas SLA TTR:\n")
-            else:
-                lines.append("Tidak ada tiket mepet mendekati batas SLA TTR saat ini.\n")
+            lines.append(f"Masih terdapat {len(target_list)} tiket aktif mendekati batas SLA TTR:\n")
         else:
             lines = ["🚨 *ALERT TIKET TTR MEPET BARU!*"]
             lines.append(f"Ditemukan {len(target_list)} tiket baru mendekati batas SLA TTR:\n")
@@ -2089,21 +2047,7 @@ def check_and_notify_ttr_mepet(periodic: bool = False):
             lines.append(f"• *{cat_label}*")
             lines.append(f"  `{inc}` • `{odc}` • `{tim}` • `{ttr_str} jam`\n")
 
-        if target_list:
-            lines.append("⚠️ _Segera lakukan penanganan di lapangan sebelum batas TTR habis!_")
-
-        lines.append("\n━━━━━━━━━━━━━━━━━━━━━\n")
-        lines.append(f"🔄 *POTENSI GAUL ({len(pg_rows)} Tiket)*")
-        if pg_rows:
-            for r, pg_val, ttr_val in pg_rows:
-                inc = r.get("incident") or "-"
-                raw_odc = r.get("odc_clean") or r.get("odc_real") or r.get("odc") or "-"
-                odc = clean_odp_code(raw_odc)
-                tim = r.get("tim") or r.get("tim_kawan") or r.get("tim_insera") or "-"
-                ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-                lines.append(f"• `{inc}` • `{odc}` • `{tim}` • `{pg_val}` • `{ttr_str} jam`")
-        else:
-            lines.append("• Tidak ada tiket Potensi Gaul saat ini.")
+        lines.append("⚠️ _Segera lakukan penanganan di lapangan sebelum batas TTR habis!_")
 
         alert_msg = "\n".join(lines).strip()
 
