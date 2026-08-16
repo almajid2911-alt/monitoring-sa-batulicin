@@ -2406,28 +2406,38 @@ def generate_asr_summary() -> str:
         lines.append("• Tidak ada tiket Garansi saat ini.")
     lines.append("")
 
-    # 4b. POTENSI GAUL
-    pg_rows = []
-    for r in rows:
-        pg_val = (r.get("potensi_gaul") or "").strip()
-        if not pg_val:
-            continue
-        summary = (r.get("summary") or "").upper()
-        ctype = (r.get("customer_type") or "").upper()
-        tinsera = (r.get("tim_insera") or "").upper()
-        if ("SQM" in summary) or ("SQM" in ctype) or ("SQM" in tinsera):
-            pg_rows.append((r, pg_val))
+    # 4b. POTENSI GAUL (Source langsung dari Google Sheet tab POTENSI GAUL gid: 67576344)
+    gaul_tab_rows = []
+    try:
+        url_gaul = "https://docs.google.com/spreadsheets/d/1gTlZxWfKlCENvDVEDKS_qHrLqNLBXsFsy0utTv2u_hY/export?format=csv&gid=67576344"
+        res_gaul = requests.get(url_gaul, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        if res_gaul.status_code == 200:
+            reader = csv.DictReader(io.StringIO(res_gaul.text))
+            gaul_tab_rows = list(reader)
+    except Exception as e:
+        print("Note fetching POTENSI GAUL sheet tab:", e)
 
-    sorted_pg = sorted(pg_rows, key=lambda x: clean_odc_real(x[0].get("device_name"), x[0].get("odc_real")))
+    ticket_map = {t.get("incident", "").upper(): t for t in rows if t.get("incident")}
+
     pg_list = []
-    for r, pg_val in sorted_pg:
-        inc = r.get("incident") or "-"
-        odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
-        ttr_val = parse_ttr(r.get("ttr"))
-        ttr_str = f"{ttr_val:.2f}".replace('.', ',')
-        tim = r.get("tim") or r.get("tim_kawan") or r.get("tim_insera") or "-"
-        gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-        pg_list.append(f"• `{inc}` `{odp}` `{tim}` `{pg_val}` `{ttr_str}`{gamas_flag}")
+    if gaul_tab_rows:
+        for r in gaul_tab_rows:
+            inc = (r.get("INCIDENT") or r.get("incident") or "").strip().upper()
+            if not inc or not inc.startswith("INC"):
+                continue
+            dev = (r.get("DEVICE NAME") or r.get("device_name") or "").strip()
+            odp = clean_odc_real(dev, dev)
+            
+            db_t = ticket_map.get(inc, {})
+            tim = db_t.get("tim") or db_t.get("tim_kawan") or db_t.get("tim_insera") or "-"
+            ttr_val = parse_ttr(db_t.get("ttr"))
+            ttr_str = f"{ttr_val:.2f}".replace('.', ',') if ttr_val > 0 else (db_t.get("ttr") or "-")
+            hu = (r.get("HASIL UKUR") or r.get("hasil_ukur") or db_t.get("hasil_ukur") or "LOS").strip().upper()
+            red = (r.get("REDAMAN") or r.get("redaman") or "").strip()
+            hu_str = f"{hu} ({red} dB)" if hu == "ONLINE" and red and red != "-" else hu
+            
+            gamas_flag = " (GAMAS)" if is_gamas_ticket(db_t) else ""
+            pg_list.append(f"• `{inc}` `{odp}` `{tim}` `{hu_str}` `{ttr_str}`{gamas_flag}")
 
     lines.append(f"🔄 *POTENSI GAUL : {len(pg_list)}*")
     if pg_list:
