@@ -2419,32 +2419,48 @@ def generate_asr_summary() -> str:
 
     ticket_map = {t.get("incident", "").upper(): t for t in rows if t.get("incident")}
 
-    pg_list = []
+    grouped_gaul = defaultdict(list)
+    total_pg = 0
+
     if gaul_tab_rows:
         for r in gaul_tab_rows:
             inc = (r.get("INCIDENT") or r.get("incident") or "").strip().upper()
-            if not inc or not inc.startswith("INC"):
-                continue
-            dev = (r.get("DEVICE NAME") or r.get("device_name") or "").strip()
-            odp = clean_odc_real(dev, dev)
-            
-            db_t = ticket_map.get(inc, {})
-            tim = db_t.get("tim") or db_t.get("tim_kawan") or db_t.get("tim_insera") or "-"
-            ttr_val = parse_ttr(db_t.get("ttr"))
-            ttr_str = f"{ttr_val:.2f}".replace('.', ',') if ttr_val > 0 else (db_t.get("ttr") or "-")
-            hu = (r.get("HASIL UKUR") or r.get("hasil_ukur") or db_t.get("hasil_ukur") or "LOS").strip().upper()
+            srv = (r.get("SERVICE NO") or r.get("service_no") or "").strip()
+            odp = (r.get("ODP") or r.get("odp") or (r.get("DEVICE NAME") or "").split('/')[0]).strip()
+            tim = (r.get("TIM") or r.get("tim") or "").strip()
+            hu = (r.get("HASIL UKUR") or r.get("hasil_ukur") or "LOS").strip().upper()
             red = (r.get("REDAMAN") or r.get("redaman") or "").strip()
-            hu_str = f"{hu} ({red} dB)" if hu == "ONLINE" and red and red != "-" else hu
-            
-            gamas_flag = " (GAMAS)" if is_gamas_ticket(db_t) else ""
-            pg_list.append(f"• `{inc}` `{odp}` `{tim}` `{hu_str}` `{ttr_str}`{gamas_flag}")
 
-    lines.append(f"🔄 *POTENSI GAUL : {len(pg_list)}*")
-    if pg_list:
-        lines.extend(pg_list)
+            if not srv and not inc and not odp:
+                continue
+
+            db_t = ticket_map.get(inc, {}) if inc else {}
+            if not tim or tim == "-" or tim.lower() == "none":
+                tim = db_t.get("tim") or db_t.get("tim_kawan") or db_t.get("tim_insera") or "BELUM DISPATCH"
+
+            ttr_val = parse_ttr(db_t.get("ttr"))
+            ttr_str = f"{ttr_val:.2f}".replace('.', ',') + " jam" if ttr_val > 0 else ""
+            hu_str = f"{hu} ({red} dB)" if hu == "ONLINE" and red and red != "-" else hu
+
+            parts = []
+            if inc: parts.append(f"`{inc}`")
+            if srv: parts.append(f"`{srv}`")
+            if odp and odp != "-": parts.append(f"`{odp}`")
+            parts.append(f"*{hu_str}*")
+            if ttr_str: parts.append(f"`{ttr_str}`")
+
+            grouped_gaul[tim.upper()].append("• " + " • ".join(parts))
+            total_pg += 1
+
+    lines.append(f"🔄 *POTENSI GAUL : {total_pg}*")
+    if grouped_gaul:
+        for tm in sorted(grouped_gaul.keys()):
+            lines.append(f"👤 *TIM: {tm}* ({len(grouped_gaul[tm])})")
+            lines.extend(grouped_gaul[tm])
+            lines.append("")
     else:
         lines.append("• Tidak ada tiket Potensi Gaul saat ini.")
-    lines.append("")
+        lines.append("")
 
     # 5. HVC Gold Detail
     gold_rows = []
