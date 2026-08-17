@@ -2673,34 +2673,43 @@ def generate_pending_summary() -> str:
     all_orders = Order.query.all()
     all_rows = [o.to_dict() for o in all_orders]
 
-    persistent_statuses = {"SEDANG DIKERJAKAN", "PENDING", "MATERIAL/NTE", "PROSES SETTING", "BELUM DIKERJAKAN"}
-    active_rows = []
+    pending_rows = []
     for r in all_rows:
-        is_today = r.get("dispatch_date") == today_wita or r.get("status_date_parsed") == today_wita
-        is_persistent = normalize_upper(r.get("status morning")) in persistent_statuses
-        if is_today or is_persistent:
-            active_rows.append(r)
+        st_up = normalize_upper(r.get("Status"))
+        sm_up = normalize_upper(r.get("status morning"))
+        cat_up = normalize_upper(r.get("Catatan") or r.get("catatan"))
 
-    target_rows = active_rows if active_rows else all_rows
+        # Must have active parameter Status: STARTWORK or WORKFAIL
+        if st_up not in {"STARTWORK", "WORKFAIL"}:
+            continue
 
-    pending_rows = [r for r in target_rows if "PENDING" in normalize_upper(r.get("status morning"))]
+        is_pending = "PENDING" in sm_up or "PENDING" in cat_up
+        is_oke_tarik = "OKE TARIK" in sm_up or "OKE TARIK" in cat_up or "TARIK" in sm_up or "TARIK" in cat_up
+
+        if is_pending or is_oke_tarik:
+            pending_rows.append(r)
+
     if not pending_rows:
-        return "Tidak ada order PENDING saat ini."
+        return "Tidak ada order PENDING atau OKE TARIK saat ini."
 
     grouped = defaultdict(list)
     for r in pending_rows:
         wz = normalize_text(r.get("workzone") or "KOSONG").upper()
         grouped[wz].append(r)
 
-    lines = [f"🟡 *MONITORING ORDER PENDING ({len(pending_rows)} Order)*\n"]
+    lines = [f"🟡 *MONITORING ORDER PENDING & OKE TARIK ({len(pending_rows)} Order)*\n"]
     for wz in sorted(grouped.keys()):
         lines.append(f"🏢 *WORKZONE {wz}*")
         sorted_rows = sorted(grouped[wz], key=lambda x: x.get("track_order") or "")
         for r in sorted_rows:
-            tr = r.get("track_order") or r.get("SC Order No/Track ID/CSRM No") or "-"
-            tim = r.get("TIM") or r.get("tim") or "-"
-            cat = (r.get("Catatan") or r.get("catatan") or r.get("status morning") or "-").strip()
-            lines.append(f"• `{tr}` • `{tim}` • `{cat}`")
+            tr = (r.get("track_order") or r.get("SC Order No/Track ID/CSRM No") or "-").replace('`', '').strip()
+            tim = (r.get("TIM") or r.get("tim") or "-").replace('`', '').strip()
+            cat = (r.get("Catatan") or r.get("catatan") or r.get("status morning") or "-").replace('`', '').strip()
+            
+            if "\n" in cat or len(cat) > 40:
+                lines.append(f"• `{tr}` • `{tim}` • \n{cat}")
+            else:
+                lines.append(f"• `{tr}` • `{tim}` • {cat}")
         lines.append("")
 
     return "\n".join(lines).strip()
