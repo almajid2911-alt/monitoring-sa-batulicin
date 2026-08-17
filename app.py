@@ -2427,6 +2427,7 @@ def generate_asr_summary() -> str:
             inc = (r.get("INCIDENT") or r.get("incident") or "").strip().upper()
             srv = (r.get("SERVICE NO") or r.get("service_no") or "").strip()
             odp = (r.get("ODP") or r.get("odp") or (r.get("DEVICE NAME") or "").split('/')[0]).strip()
+            odp = re.sub(r'^(ODP-|ODC-)', '', odp, flags=re.IGNORECASE)
             tim = (r.get("TIM") or r.get("tim") or "").strip()
             hu = (r.get("HASIL UKUR") or r.get("hasil_ukur") or "LOS").strip().upper()
             red = (r.get("REDAMAN") or r.get("redaman") or "").strip()
