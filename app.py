@@ -2447,7 +2447,6 @@ def generate_asr_summary() -> str:
             if inc: parts.append(f"`{inc}`")
             if srv: parts.append(f"`{srv}`")
             if odp and odp != "-": parts.append(f"`{odp}`")
-            parts.append(f"*{hu_str}*")
             if ttr_str: parts.append(f"`{ttr_str}`")
 
             # Warning marker if CEK DISPATCH is empty / not dispatched
