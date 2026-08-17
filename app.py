@@ -2430,6 +2430,7 @@ def generate_asr_summary() -> str:
             tim = (r.get("TIM") or r.get("tim") or "").strip()
             hu = (r.get("HASIL UKUR") or r.get("hasil_ukur") or "LOS").strip().upper()
             red = (r.get("REDAMAN") or r.get("redaman") or "").strip()
+            cek_dispatch = (r.get("CEK DISPATCH") or r.get("cek_dispatch") or "").strip()
 
             if not srv and not inc and not odp:
                 continue
@@ -2448,6 +2449,12 @@ def generate_asr_summary() -> str:
             if odp and odp != "-": parts.append(f"`{odp}`")
             parts.append(f"*{hu_str}*")
             if ttr_str: parts.append(f"`{ttr_str}`")
+
+            # Warning marker if CEK DISPATCH is empty / not dispatched
+            if not cek_dispatch or cek_dispatch == "-" or cek_dispatch.lower() == "none":
+                parts.append("⚠️ *BELUM DISPATCH*")
+            else:
+                parts.append(f"*{cek_dispatch}*")
 
             grouped_gaul[tim.upper()].append("• " + " • ".join(parts))
             total_pg += 1
