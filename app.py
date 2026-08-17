@@ -85,13 +85,14 @@ class Order(db.Model):
 
 def clean_odc_real(dev_name: str | None, odc_real: str | None) -> str:
     # Example: ODP-PGT-FD/030 FD/D02/030.01 -> ODP-PGT-FD/030
-    src = (dev_name or "").strip()
-    if not src:
-        src = (odc_real or "").strip()
-    if not src:
+    src = (dev_name or "").replace('`', '').strip()
+    if not src or src in {"-", "`"}:
+        src = (odc_real or "").replace('`', '').strip()
+    if not src or src in {"-", "`"}:
         return "-"
     parts = src.split()
-    return parts[0] if parts else src
+    res = parts[0] if parts else src
+    return res.replace('`', '').strip() or "-"
 
 
 class AssuranceTicket(db.Model):
@@ -1455,14 +1456,20 @@ def send_telegram_message(chat_id, text):
     if not TELEGRAM_BOT_TOKEN:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    
+    clean_text = text
+    if clean_text.count('`') % 2 != 0:
+        clean_text = clean_text + '`'
+
     payload = {
         "chat_id": chat_id,
-        "text": text,
+        "text": clean_text,
         "parse_mode": "Markdown"
     }
     try:
         res = requests.post(url, json=payload, timeout=10)
         if res.status_code != 200:
+            print(f"Telegram Markdown error: {res.text}")
             # Fallback without parse_mode if Markdown parsing failed
             payload_plain = {
                 "chat_id": chat_id,
