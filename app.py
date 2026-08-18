@@ -2786,12 +2786,13 @@ def generate_saber_summary() -> str:
         for r in sorted_rows:
             tr = (r.get("track_order") or r.get("SC Order No/Track ID/CSRM No") or "-").replace('`', '').strip()
             tim = (r.get("TIM") or r.get("tim") or "-").replace('`', '').strip()
+            odc = (r.get("ODC") or r.get("odc") or r.get("ODP") or r.get("odp") or "-").replace('`', '').strip()
             cat = (r.get("Catatan") or r.get("catatan") or r.get("status morning") or "-").replace('`', '').strip()
             
             if "\n" in cat or len(cat) > 40:
-                lines.append(f"• `{tr}` • `{tim}` • \n{cat}")
+                lines.append(f"• `{tr}` • `{tim}` • `{odc}` • \n{cat}")
             else:
-                lines.append(f"• `{tr}` • `{tim}` • {cat}")
+                lines.append(f"• `{tr}` • `{tim}` • `{odc}` • {cat}")
         lines.append("")
 
     return "\n".join(lines).strip()
