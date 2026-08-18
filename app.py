@@ -2665,6 +2665,33 @@ def generate_asr_idle_summary() -> str:
     return "\n".join(lines).strip()
 
 
+def is_valid_pending_status(sm_str: str, cat_str: str = "") -> bool:
+    s = normalize_upper(sm_str)
+    c = normalize_upper(cat_str)
+    
+    # 1. Pending
+    if "PENDING" in s or "PENDING" in c:
+        return True
+    
+    # 2. Oke Tarik (explicitly check oke tarik / ok tarik / done tarik, avoid general 'tarikan')
+    if any(k in s for k in ["OKE TARIK", "OK TARIK", "DONE TARIK"]):
+        return True
+    
+    # 3. Kendala Hujan
+    if "HUJAN" in s or "HUJAN" in c:
+        return True
+        
+    # 4. Kendala Mati Listrik / Mati Lampu
+    if any(k in s for k in ["MATI LISTRIK", "MATI LAMPU", "KENDALA LISTRIK"]) or any(k in c for k in ["MATI LISTRIK", "MATI LAMPU", "KENDALA LISTRIK"]):
+        return True
+        
+    # 5. Material / NTE
+    if any(k in s for k in ["MATERIAL", "NTE"]) or any(k in c for k in ["MATERIAL/NTE", "KENDALA NTE", "KENDALA MATERIAL"]):
+        return True
+        
+    return False
+
+
 def generate_pending_summary() -> str:
     now_utc = datetime.now(timezone.utc)
     now_wita = now_utc + timedelta(hours=8)
@@ -2683,21 +2710,18 @@ def generate_pending_summary() -> str:
         if st_up not in {"STARTWORK", "WORKFAIL"}:
             continue
 
-        is_pending = "PENDING" in sm_up or "PENDING" in cat_up
-        is_oke_tarik = "OKE TARIK" in sm_up or "OKE TARIK" in cat_up or "TARIK" in sm_up or "TARIK" in cat_up
-
-        if is_pending or is_oke_tarik:
+        if is_valid_pending_status(sm_up, cat_up):
             pending_rows.append(r)
 
     if not pending_rows:
-        return "Tidak ada order PENDING atau OKE TARIK saat ini."
+        return "Tidak ada order PENDING saat ini."
 
     grouped = defaultdict(list)
     for r in pending_rows:
         wz = normalize_text(r.get("workzone") or "KOSONG").upper()
         grouped[wz].append(r)
 
-    lines = [f"🟡 *MONITORING ORDER PENDING & OKE TARIK ({len(pending_rows)} Order)*\n"]
+    lines = [f"🟡 *MONITORING ORDER PENDING ({len(pending_rows)} Order)*\n"]
     for wz in sorted(grouped.keys()):
         lines.append(f"🏢 *WORKZONE {wz}*")
         sorted_rows = sorted(grouped[wz], key=lambda x: x.get("track_order") or "")
