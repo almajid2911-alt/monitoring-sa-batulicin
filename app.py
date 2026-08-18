@@ -2739,6 +2739,64 @@ def generate_pending_summary() -> str:
     return "\n".join(lines).strip()
 
 
+def is_valid_saber_status(sm_str: str, cat_str: str = "") -> bool:
+    s = normalize_upper(sm_str)
+    c = normalize_upper(cat_str)
+    
+    # 1. ODP Rusak / Port Rusak / Splitter Rusak
+    if any(k in s for k in ["ODP RUSAK", "PORT RUSAK", "SPLITTER RUSAK", "KENDALA ODP", "RUSAK"]) or any(k in c for k in ["ODP RUSAK", "PORT RUSAK", "SPLITTER RUSAK"]):
+        return True
+        
+    # 2. Insert Tiang / Perlu Tiang / Tanam Tiang
+    if any(k in s for k in ["INSERT TIANG", "TIANG", "TANAM TIANG", "PERLU TIANG"]) or any(k in c for k in ["INSERT TIANG", "PERLU TIANG", "TANAM TIANG"]):
+        return True
+        
+    return False
+
+
+def generate_saber_summary() -> str:
+    all_orders = Order.query.all()
+    all_rows = [o.to_dict() for o in all_orders]
+
+    saber_rows = []
+    for r in all_rows:
+        st_up = normalize_upper(r.get("Status"))
+        sm_up = normalize_upper(r.get("status morning"))
+        cat_up = normalize_upper(r.get("Catatan") or r.get("catatan"))
+
+        # Syarat Status Utama: STARTWORK atau WORKFAIL
+        if st_up not in {"STARTWORK", "WORKFAIL"}:
+            continue
+
+        if is_valid_saber_status(sm_up, cat_up):
+            saber_rows.append(r)
+
+    if not saber_rows:
+        return "Tidak ada order kendala SABER (ODP Rusak / Insert Tiang) saat ini."
+
+    grouped = defaultdict(list)
+    for r in saber_rows:
+        wz = normalize_text(r.get("workzone") or "KOSONG").upper()
+        grouped[wz].append(r)
+
+    lines = [f"🛠️ *MONITORING KENDALA SABER ({len(saber_rows)} Order)*\n"]
+    for wz in sorted(grouped.keys()):
+        lines.append(f"🏢 *WORKZONE {wz}*")
+        sorted_rows = sorted(grouped[wz], key=lambda x: x.get("track_order") or "")
+        for r in sorted_rows:
+            tr = (r.get("track_order") or r.get("SC Order No/Track ID/CSRM No") or "-").replace('`', '').strip()
+            tim = (r.get("TIM") or r.get("tim") or "-").replace('`', '').strip()
+            cat = (r.get("Catatan") or r.get("catatan") or r.get("status morning") or "-").replace('`', '').strip()
+            
+            if "\n" in cat or len(cat) > 40:
+                lines.append(f"• `{tr}` • `{tim}` • \n{cat}")
+            else:
+                lines.append(f"• `{tr}` • `{tim}` • {cat}")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 def generate_sync_summary() -> str:
     global last_sync_time
     c1 = sync_orders()
@@ -2754,7 +2812,7 @@ def generate_sync_summary() -> str:
 ✅ *Data Assurance:* Synced `{c2}` tiket
 🕒 *Waktu Sync:* `{now_wita}`
 
-💡 _Data database telah diperbarui ke versi terbaru. Silakan jalankan command monitoring Anda (misal: /psbsore, /gamas, /pending, /online, /ttr, /unspec, /asr, /providle, /asridle)._"""
+💡 _Data database telah diperbarui ke versi terbaru. Silakan jalankan command monitoring Anda (misal: /psbsore, /gamas, /pending, /saber, /online, /ttr, /unspec, /asr, /providle, /asridle)._"""
 
 
 def generate_help_guide():
@@ -2776,6 +2834,7 @@ def generate_help_guide():
 📦 `/providle` : Laporan Order Provisioning Undispatch & Belum Dikerjakan
 🌅 `/psbsore` : Cek Order Sedang OGP dan Total Potensi
 🟡 `/pending` : Cek Order PENDING beserta catatan kendala per Workzone
+🛠️ `/saber` : Cek Order kendala ODP Rusak & Insert Tiang per Workzone
 📋 `/retoday` : Detail RE Indihome hari ini (Nomor Track, Status, ODC, Summary)
 
 💬 *BOT INTERAKTIF*
@@ -2888,6 +2947,20 @@ def telegram_webhook():
             except Exception as ex:
                 print(f"Error in /pending command: {ex}")
                 send_telegram_message(chat_id, f"⚠️ Gagal memproses /pending: {str(ex)}")
+            return "OK", 200
+
+        if cmd.startswith("/saber") or cmd.startswith("/kendalasaber") or cmd.startswith("/odprusak") or cmd.startswith("/inserttiang"):
+            try:
+                saber_msg = generate_saber_summary()
+                if len(saber_msg) > 4000:
+                    chunks = [saber_msg[i:i+4000] for i in range(0, len(saber_msg), 4000)]
+                    for c in chunks:
+                        send_telegram_message(chat_id, c)
+                else:
+                    send_telegram_message(chat_id, saber_msg)
+            except Exception as ex:
+                print(f"Error in /saber command: {ex}")
+                send_telegram_message(chat_id, f"⚠️ Gagal memproses /saber: {str(ex)}")
             return "OK", 200
 
         if cmd.startswith("/psbsore") or cmd.startswith("/psb_sore"):
@@ -3529,6 +3602,7 @@ def setup_telegram_bot_commands():
         {"command": "online", "description": "🟢 Tiket Redaman Online (max -24 dB)"},
         {"command": "unspec", "description": "📋 Tiket UNSPEC per Workzone"},
         {"command": "pending", "description": "🟡 Order PENDING per Workzone"},
+        {"command": "saber", "description": "🛠️ Order Kendala ODP Rusak & Insert Tiang"},
         {"command": "providle", "description": "📦 Provisioning Undispatch / Idle"},
         {"command": "asridle", "description": "🚨 Assurance Undispatch / Idle"},
         {"command": "retoday", "description": "📋 Detail RE Indihome Hari Ini"},
