@@ -1455,7 +1455,7 @@ last_sync_time = datetime.now()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ADMIN_TELEGRAM_IDS = {"171053504"}
-DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://9d1op3thzanw91zpbf8m5jb3.103.93.129.213.sslip.io")
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://monitoring.103.93.129.213.sslip.io")
 
 def send_telegram_message(chat_id, text, include_web_btn=True):
     if not TELEGRAM_BOT_TOKEN:
