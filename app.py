@@ -2845,15 +2845,10 @@ Anda juga bisa bertanya langsung menggunakan bahasa alami:
 • _"Berapa order pending hari ini?"_"""
 
 
-@app.route("/api/telegram/webhook", methods=["POST"])
-def telegram_webhook():
+def process_telegram_update(update):
     api_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
-    if not TELEGRAM_BOT_TOKEN:
-        return jsonify({"status": "disabled"}), 200
-
-    update = request.get_json()
-    if not update:
-        return "OK", 200
+    if not TELEGRAM_BOT_TOKEN or not update:
+        return
 
     if "message" in update and "text" in update["message"]:
         chat_id = update["message"]["chat"]["id"]
@@ -3107,7 +3102,59 @@ Pertanyaan pengguna ({user_name}):
             help_msg = generate_help_guide()
             send_telegram_message(chat_id, help_msg)
 
+
+@app.route("/api/telegram/webhook", methods=["POST"])
+def telegram_webhook():
+    if not TELEGRAM_BOT_TOKEN:
+        return jsonify({"status": "disabled"}), 200
+    update = request.get_json()
+    if update:
+        process_telegram_update(update)
     return "OK", 200
+
+
+def run_telegram_polling():
+    token = TELEGRAM_BOT_TOKEN
+    if not token:
+        print("[Telegram Polling] TELEGRAM_BOT_TOKEN tidak ditemukan, polling dibatalkan.")
+        return
+
+    # Delete webhook agar Telegram server beralih ke Long Polling
+    try:
+        del_res = requests.post(f"https://api.telegram.org/bot{token}/deleteWebhook", json={"drop_pending_updates": False}, timeout=10)
+        print(f"[Telegram Polling] Webhook dihapus agar Long Polling aktif: {del_res.text}")
+    except Exception as e:
+        print(f"[Telegram Polling] Note deleteWebhook: {e}")
+
+    offset = 0
+    print("[Telegram Polling] Worker Long Polling LAPORANKUY aktif 24/7 di background...")
+
+    while True:
+        try:
+            url = f"https://api.telegram.org/bot{token}/getUpdates?offset={offset}&timeout=25"
+            resp = requests.get(url, timeout=30)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("ok"):
+                    for update in data.get("result", []):
+                        offset = update["update_id"] + 1
+                        try:
+                            with app.app_context():
+                                process_telegram_update(update)
+                        except Exception as p_err:
+                            print(f"[Telegram Polling] Error processing update: {p_err}")
+            elif resp.status_code == 409:
+                time.sleep(5)
+            else:
+                time.sleep(2)
+        except Exception as ex:
+            time.sleep(3)
+
+
+def start_telegram_polling_worker():
+    if TELEGRAM_BOT_TOKEN:
+        t = threading.Thread(target=run_telegram_polling, daemon=True)
+        t.start()
 
 
 @app.route("/api/dashboard/order")
@@ -3625,6 +3672,7 @@ try:
     init_db_migration()
     setup_telegram_bot_commands()
     start_ttr_mepet_worker()
+    start_telegram_polling_worker()
 except Exception as ex:
     print("Startup error:", ex)
 
