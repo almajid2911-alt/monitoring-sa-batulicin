@@ -1451,8 +1451,10 @@ last_sync_time = datetime.now()
 # ─── TELEGRAM BOT AI AGENT (OPENROUTER) ───────────────────────────────────────
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+ADMIN_TELEGRAM_IDS = {"171053504"}
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://9d1op3thzanw91zpbf8m5jb3.103.93.129.213.sslip.io")
 
-def send_telegram_message(chat_id, text):
+def send_telegram_message(chat_id, text, include_web_btn=True):
     if not TELEGRAM_BOT_TOKEN:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -1466,6 +1468,17 @@ def send_telegram_message(chat_id, text):
         "text": clean_text,
         "parse_mode": "Markdown"
     }
+
+    # HANYA tampilkan tombol web dashboard jika chat_id adalah ID Admin (171053504)
+    if include_web_btn and str(chat_id) in ADMIN_TELEGRAM_IDS:
+        payload["reply_markup"] = {
+            "inline_keyboard": [
+                [
+                    {"text": "🌐 Buka Web Dashboard Monitoring", "url": DASHBOARD_URL}
+                ]
+            ]
+        }
+
     try:
         res = requests.post(url, json=payload, timeout=10)
         if res.status_code != 200:
@@ -1475,6 +1488,8 @@ def send_telegram_message(chat_id, text):
                 "chat_id": chat_id,
                 "text": text
             }
+            if include_web_btn and str(chat_id) in ADMIN_TELEGRAM_IDS:
+                payload_plain["reply_markup"] = payload.get("reply_markup")
             requests.post(url, json=payload_plain, timeout=10)
     except Exception as e:
         print(f"Failed to send Telegram message: {e}")
@@ -2871,6 +2886,22 @@ def process_telegram_update(update):
             pass
 
         cmd = user_text.strip().lower()
+        if cmd in {"/web", "/dashboard", "/app"} or cmd.startswith("/web") or cmd.startswith("/dashboard"):
+            if str(chat_id) in ADMIN_TELEGRAM_IDS:
+                send_telegram_message(
+                    chat_id,
+                    f"🌐 *WEB DASHBOARD MONITORING ORDER & ASSURANCE*\n\n"
+                    f"👉 *Link Eksklusif Administrator:*\n{DASHBOARD_URL}\n\n"
+                    f"_Klik tombol di bawah untuk membuka dashboard secara langsung._"
+                )
+            else:
+                send_telegram_message(
+                    chat_id,
+                    "⚠️ *Akses Terbatas:* Link Web Dashboard hanya dapat diakses oleh Administrator (HSA).",
+                    include_web_btn=False
+                )
+            return "OK", 200
+
         if cmd in {"/start", "/help", "help", "menu", "petunjuk", "command", "fitur", "info"} or cmd.startswith("/help") or cmd.startswith("/start"):
             help_msg = generate_help_guide()
             send_telegram_message(chat_id, help_msg)
