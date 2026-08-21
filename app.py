@@ -2852,8 +2852,14 @@ def process_telegram_update(update):
 
     if "message" in update and "text" in update["message"]:
         chat_id = update["message"]["chat"]["id"]
+        chat_type = update["message"]["chat"].get("type", "private")
+        is_group = chat_type in ["group", "supergroup"]
         user_text = update["message"]["text"]
         user_name = update["message"]["from"].get("first_name", "Pengguna")
+
+        # Abaikan pesan obrolan biasa di grup (HANYA respon jika diawali "/")
+        if is_group and not user_text.strip().startswith("/"):
+            return "OK", 200
 
         # Auto register chat_id for TTR mepet alerts
         try:
@@ -3098,9 +3104,7 @@ Pertanyaan pengguna ({user_name}):
             send_telegram_message(chat_id, ai_reply)
 
         except Exception as e:
-            print("AI Error, falling back to help guide:", e)
-            help_msg = generate_help_guide()
-            send_telegram_message(chat_id, help_msg)
+            print("AI Error silently handled:", e)
 
 
 @app.route("/api/telegram/webhook", methods=["POST"])
