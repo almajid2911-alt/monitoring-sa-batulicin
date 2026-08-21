@@ -546,8 +546,9 @@ def sync_orders():
     
     for row_dict in deduped_rows:
         tr_order = normalize_text(row_dict.get("track_order") or row_dict.get("SC Order No/Track ID/CSRM No"))
-        if not tr_order:
+        if not tr_order or tr_order in current_sheet_ids:
             continue
+        current_sheet_ids.add(tr_order)
 
         existing = existing_orders.get(tr_order)
         new_status_score = preferred_statuses.get(normalize_upper(row_dict.get("Status")), -1)
@@ -595,7 +596,6 @@ def sync_orders():
                 workorder=normalize_text(row_dict.get("Workorder")),
                 odc=normalize_text(row_dict.get("ODC")),
                 status=normalize_text(row_dict.get("Status")),
-                # Robust mapping for status morning
                 status_morning=normalize_text(row_dict.get("status morning") or row_dict.get("Status Morning") or row_dict.get("status_morning")),
                 catatan=normalize_text(row_dict.get("Catatan")),
                 jam_re=normalize_text(row_dict.get("Jam re")),
@@ -623,7 +623,6 @@ def sync_orders():
             db.session.add(new_order)
             existing_orders[tr_order] = new_order
         
-        current_sheet_ids.add(tr_order)
         synced_count += 1
         
     # Identify and delete "ghost" records no longer in the Google Sheet
@@ -634,7 +633,11 @@ def sync_orders():
         print(f"Sync: Deleting {len(ids_to_delete)} ghost records not found in Google Sheet.")
         Order.query.filter(Order.track_order.in_(ids_to_delete)).delete(synchronize_session=False)
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception as e_commit:
+        db.session.rollback()
+        raise e_commit
     return synced_count
 
 
