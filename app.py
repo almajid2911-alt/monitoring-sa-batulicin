@@ -2357,6 +2357,28 @@ def generate_asr_summary() -> str:
     lines.append(f"• 💎 HVC Platinum : {counts['HVC Platinum']}")
     lines.append(f"• 💠 HVC Diamond : {counts['HVC Diamond']}")
     lines.append(f"• 👤 Reguler : {counts['Reguler']}")
+    def get_customer_segment_flag(r: dict) -> str:
+        seg = (r.get("customer_segment") or "").strip().upper()
+        if seg and seg not in {"-", "NONE", "NULL", "EMPTY"}:
+            return seg
+        sum_u = (r.get("summary") or "").upper()
+        ct_u = (r.get("customer_type") or "").upper()
+        if "RBS" in sum_u or "RBS" in ct_u:
+            return "RBS"
+        elif "PL-TSEL" in sum_u or "PL-TSEL" in ct_u or "TSEL" in sum_u:
+            return "PL-TSEL"
+        elif "DES" in sum_u or "DES" in ct_u:
+            return "DES"
+        elif "DBS" in sum_u or "DBS" in ct_u:
+            return "DBS"
+        elif "DGS" in sum_u or "DGS" in ct_u:
+            return "DGS"
+        elif "DPS" in sum_u or "DPS" in ct_u:
+            return "DPS"
+        elif "REGULER" in ct_u or "RESI" in ct_u or "DCS" in sum_u:
+            return "DCS"
+        return ""
+
     lines.append(f"• ⚡ SQM : {counts['SQM']}")
     lines.append(f"• 🏢 RBS : {counts['RBS']}")
     lines.append(f"• ❓ Unspec : {counts['Unspec']}")
@@ -2379,7 +2401,9 @@ def generate_asr_summary() -> str:
         inc = r.get("incident") or "-"
         odp = clean_odc_real(r.get("device_name"), r.get("odc_real"))
         gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-        manja_list.append(f"• `{inc}` `{odp}`{jm_str}{gamas_flag}")
+        seg_val = get_customer_segment_flag(r)
+        seg_str = f" {seg_val}" if seg_val else ""
+        manja_list.append(f"• `{inc}` `{odp}`{jm_str}{seg_str}{gamas_flag}")
 
     lines.append(f"⏳ *Tiket manja : {len(manja_list)}*")
     if manja_list:
@@ -2403,7 +2427,9 @@ def generate_asr_summary() -> str:
         ttr_val = parse_ttr(r.get("ttr"))
         ttr_str = f"{ttr_val:.2f}".replace('.', ',')
         gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-        osla_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
+        seg_val = get_customer_segment_flag(r)
+        seg_str = f" {seg_val}" if seg_val else ""
+        osla_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{seg_str}{gamas_flag}")
 
     lines.append("⏰ *OSLA :*")
     if osla_list:
@@ -2422,7 +2448,9 @@ def generate_asr_summary() -> str:
         ttr_val = parse_ttr(r.get("ttr"))
         ttr_str = f"{ttr_val:.2f}".replace('.', ',')
         gamas_flag = " (GAMAS)" if is_gamas_ticket(r) else ""
-        garansi_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{gamas_flag}")
+        seg_val = get_customer_segment_flag(r)
+        seg_str = f" {seg_val}" if seg_val else ""
+        garansi_list.append(f"• `{inc}` `{odp}` `{ttr_str}`{seg_str}{gamas_flag}")
 
     lines.append("🛡️ *GARANSI :*")
     if garansi_list:
