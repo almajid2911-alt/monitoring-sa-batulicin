@@ -2473,6 +2473,19 @@ def generate_asr_summary() -> str:
     pg_list = []
     if gaul_tab_rows:
         for r in gaul_tab_rows:
+            # Filter jika NEW HASIL UKUR sudah ONLINE dan NEW REDAMAN in-spec (<= 25 dBm / >= -25 dBm)
+            new_hasil = (r.get("NEW HASIL UKUR") or r.get("new_hasil_ukur") or "").strip().upper()
+            new_redaman_raw = (r.get("NEW REDAMAN") or r.get("new_redaman") or "").strip()
+            if "ONLINE" in new_hasil:
+                if not new_redaman_raw or new_redaman_raw == "-":
+                    continue
+                try:
+                    red_val = float(new_redaman_raw.replace(',', '.'))
+                    if red_val >= -25.0 or abs(red_val) <= 25.0:
+                        continue
+                except:
+                    continue
+
             inc = (r.get("INCIDENT") or r.get("incident") or "").strip().upper()
             srv = (r.get("SERVICE NO") or r.get("service_no") or "").strip()
             odp = (r.get("ODP") or r.get("odp") or (r.get("DEVICE NAME") or "").split('/')[0]).strip()
